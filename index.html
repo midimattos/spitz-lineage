@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#1a0e00" />
+  <meta name="description" content="Spitz Lineage Manager — Gestão Genética de Elite" />
+  <title>Spitz Lineage Manager</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,400&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <link rel="stylesheet" href="/src/styles/main.css" />
+
+  <!-- Firebase config injected here (replaced at deploy by your CI/CD or filled manually) -->
+  <script>
+    window.__ENV__ = {
+      FIREBASE_API_KEY:             'AIzaSyC121MOBDZTDNWjlAlhSFKRT_gdBZ73yRc',
+      FIREBASE_AUTH_DOMAIN:         'spitz-lineage.firebaseapp.com',
+      FIREBASE_PROJECT_ID:          'spitz-lineage',
+      FIREBASE_STORAGE_BUCKET:      'spitz-lineage.firebasestorage.app',
+      FIREBASE_MESSAGING_SENDER_ID: '148152031531',
+      FIREBASE_APP_ID:              '1:148152031531:web:85499e839d2d7b98568d6e'
+    };
+  </script>
+  <script type="module" src="/src/app.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="loading-screen">
+      <div class="loader-logo">
+        <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+          <circle cx="24" cy="24" r="20" fill="rgba(200,134,10,.12)"/>
+          <circle cx="24" cy="24" r="12" fill="rgba(200,134,10,.25)"/>
+          <circle cx="24" cy="24" r="5" fill="#c8860a"/>
+        </svg>
+        <span>Spitz Lineage</span>
+      </div>
+      <div class="loader-bar"><div class="loader-fill"></div></div>
+    </div>
+  </div>
+</body>
+</html>

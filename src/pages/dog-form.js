@@ -45,6 +45,9 @@ export async function renderDogForm(container, appState) {
   const BASE_COLORS = ['Preto','Chocolate','Beaver/Lilás','Laranja/Sable','Wolf Sable','Creme/Branco','Azul/Cinza','Merle','Tricolor'];
   const MARKINGS    = ['Sólido','Sable','Wolf Sable','Tan Points','Tricolor','Particolor','Merle','Branco Extremo','Máscara'];
   const NOSES       = ['Preta','Marrom','Lilás','Azul/Acinzentada','Carne'];
+  const DILUTIONS   = ['Densa','Diluída'];
+  const MERLE_TYPES = ['Não Merle','Merle','Harlequin'];
+  const INTENSITIES = ['Alta (Vívida)','Média','Baixa (Pálida)'];
 
   function opt(arr, val) {
     return arr.map(v=>`<option value="${v.toLowerCase().replace(/\//g,'_').replace(/ /g,'_')}"
@@ -99,6 +102,35 @@ export async function renderDogForm(container, appState) {
         <div class="form-group">
           <label class="form-label">Cor da Trufa</label>
           <select class="form-select" name="nose">${opt(NOSES,'nose')}</select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="form-group">
+            <label class="form-label">Diluição</label>
+            <select class="form-select" name="dilution">
+              ${DILUTIONS.map(v=>`<option value="${v.toLowerCase().split(' ')[0]}"
+                ${existing?.phenotype?.dilution===v.toLowerCase().split(' ')[0]?'selected':''}>${v}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Merle</label>
+            <select class="form-select" name="merleType">
+              ${MERLE_TYPES.map(v=>{
+                const val = v.toLowerCase().replace(/ã/g,'a').replace(/ /g,'_');
+                return `<option value="${val}"
+                  ${existing?.phenotype?.merleType===val?'selected':''}>${v}</option>`;
+              }).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Intensidade de Cor</label>
+          <select class="form-select" name="intensity">
+            ${INTENSITIES.map(v=>{
+              const val = v.toLowerCase().split(' ')[0];
+              return `<option value="${val}"
+                ${existing?.phenotype?.intensity===val?'selected':''}>${v}</option>`;
+            }).join('')}
+          </select>
         </div>
 
         <div class="form-group">
@@ -164,7 +196,7 @@ export async function renderDogForm(container, appState) {
         </div>
       </div>
 
-      <div style="display:flex;gap:10px;margin-top:24px">
+      <div style="display:flex;gap:10px;margin-top:24px;padding-bottom:100px">
         <button type="button" class="btn btn-outline" onclick="window._nav('dogs')">Cancelar</button>
         <button type="submit" class="btn btn-primary" style="flex:1">
           ${appState.editingDogId ? 'Salvar Alterações' : 'Cadastrar Cão'}
@@ -239,28 +271,52 @@ function initFormHandlers(container, appState) {
     fs.fatherId = dog.id; fs.fatherName = dog.name; fs.fatherPhenotype = dog.phenotype;
     document.getElementById('father-status').textContent = '✓ Vinculado: ' + dog.name;
     // auto-fill grandparents
+    let filledCount = 0;
     if (dog.pedigree?.fatherId) {
       const gf = await getDog(uid, dog.pedigree.fatherId).catch(()=>null);
-      if (gf) { fs.patGrandfatherId=gf.id; fs.patGrandfatherName=gf.name; setVal('pat-gf-input', gf.name); }
+      if (gf) {
+        fs.patGrandfatherId=gf.id; fs.patGrandfatherName=gf.name;
+        setVal('pat-gf-input', gf.name);
+        markAutoFilled('pat-gf-input');
+        filledCount++;
+      }
     }
     if (dog.pedigree?.motherId) {
       const gm = await getDog(uid, dog.pedigree.motherId).catch(()=>null);
-      if (gm) { fs.patGrandmotherId=gm.id; fs.patGrandmotherName=gm.name; setVal('pat-gm-input', gm.name); }
+      if (gm) {
+        fs.patGrandmotherId=gm.id; fs.patGrandmotherName=gm.name;
+        setVal('pat-gm-input', gm.name);
+        markAutoFilled('pat-gm-input');
+        filledCount++;
+      }
     }
+    if (filledCount > 0) showAutoFillToast(`${filledCount} avô(s) paterno(s) preenchido(s) automaticamente ✓`);
   });
 
   // ── Mother autocomplete
   setupAC('mother-input','mother-dropdown', uid, async (dog) => {
     fs.motherId = dog.id; fs.motherName = dog.name; fs.motherPhenotype = dog.phenotype;
     document.getElementById('mother-status').textContent = '✓ Vinculada: ' + dog.name;
+    let filledCount = 0;
     if (dog.pedigree?.fatherId) {
       const gf = await getDog(uid, dog.pedigree.fatherId).catch(()=>null);
-      if (gf) { fs.matGrandfatherId=gf.id; fs.matGrandfatherName=gf.name; setVal('mat-gf-input', gf.name); }
+      if (gf) {
+        fs.matGrandfatherId=gf.id; fs.matGrandfatherName=gf.name;
+        setVal('mat-gf-input', gf.name);
+        markAutoFilled('mat-gf-input');
+        filledCount++;
+      }
     }
     if (dog.pedigree?.motherId) {
       const gm = await getDog(uid, dog.pedigree.motherId).catch(()=>null);
-      if (gm) { fs.matGrandmotherId=gm.id; fs.matGrandmotherName=gm.name; setVal('mat-gm-input', gm.name); }
+      if (gm) {
+        fs.matGrandmotherId=gm.id; fs.matGrandmotherName=gm.name;
+        setVal('mat-gm-input', gm.name);
+        markAutoFilled('mat-gm-input');
+        filledCount++;
+      }
     }
+    if (filledCount > 0) showAutoFillToast(`${filledCount} avô(s) materno(s) preenchido(s) automaticamente ✓`);
   });
 
   // ── Ancestor autocompletes
@@ -286,6 +342,9 @@ function initFormHandlers(container, appState) {
         baseColor: form.baseColor.value,
         marking:   form.marking.value,
         nose:      form.nose.value,
+        dilution:  form.dilution.value,
+        merleType: form.merleType.value,
+        intensity: form.intensity.value,
         label:     `${form.baseColor.value} ${form.marking.value}`.trim()
       };
       const genotype = inferGenotype(
@@ -356,6 +415,34 @@ function setupAC(inputId, dropId, uid, onSelect) {
 function setVal(id, val) {
   const el = document.getElementById(id);
   if (el) el.value = val;
+}
+
+function markAutoFilled(inputId) {
+  const el = document.getElementById(inputId);
+  if (!el) return;
+  el.style.borderColor = 'var(--gold)';
+  el.style.background  = 'rgba(200,134,10,0.08)';
+  setTimeout(() => {
+    el.style.borderColor = '';
+    el.style.background  = '';
+  }, 3000);
+}
+
+function showAutoFillToast(message) {
+  const existing = document.getElementById('autofill-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'autofill-toast';
+  toast.textContent = message;
+  toast.style.cssText = `
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    background: var(--gold); color: #1a0e00; font-weight: 600;
+    padding: 10px 20px; border-radius: 20px; font-size: .82rem;
+    z-index: 9999; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    animation: fadeInUp .25s ease;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
 }
 
 function updateGenotypePreview() {

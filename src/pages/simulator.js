@@ -43,14 +43,6 @@ export function renderSimulator(container, appState) {
             ${females.map(d=>`<option value="${d.id}">${d.name} · ${d.phenotype?.label||''}</option>`).join('')}
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Filhotes na Simulação</label>
-          <select class="form-select" id="sim-size">
-            <option value="20">20 filhotes (padrão)</option>
-            <option value="50">50 filhotes</option>
-            <option value="100">100 filhotes (alta precisão)</option>
-          </select>
-        </div>
         <button class="btn btn-primary btn-full" id="btn-simulate">🧬 Simular Ninhada</button>
       </div>
       <div id="sim-results"></div>
@@ -124,7 +116,7 @@ const TARGET_COLORS = [
 async function runSimulation(appState) {
   const maleId   = document.getElementById('sim-male').value;
   const femaleId = document.getElementById('sim-female').value;
-  const size     = parseInt(document.getElementById('sim-size').value) || 20;
+  const MONTE_CARLO_N = 1000;
   const btn      = document.getElementById('btn-simulate');
 
   if (!maleId || !femaleId) { alert('Selecione macho e fêmea.'); return; }
@@ -137,7 +129,7 @@ async function runSimulation(appState) {
     const uid    = appState.user.uid;
 
     const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
-    const litter    = simulateLitter(male.genotype || {}, female.genotype || {}, size);
+    const litter    = simulateLitter(male.genotype || {}, female.genotype || {}, MONTE_CARLO_N);
     const stats     = litterStats(litter);
 
     renderResults(male, female, litter, stats, coiResult, appState);
@@ -208,11 +200,53 @@ async function deepCOI(uid, maleId, femaleId, dogsCache) {
 // ─────────────────────────────────────────────────────────────
 // RENDER RESULTS
 // ─────────────────────────────────────────────────────────────
-function renderResults(male, female, litter, stats, coiResult, appState) {
-  const res     = document.getElementById('sim-results');
-  const entries = Object.entries(stats.counts).sort((a, b) => b[1] - a[1]);
-  const total   = stats.total;
 
+/** Creates a deterministic key to identify a unique visual phenotype */
+function phenotypeKey(pheno) {
+  return [
+    pheno.baseColor || '',
+    pheno.marking   || '',
+    pheno.dilution  || '',
+    pheno.doubleMerle ? 'DM' : ''
+  ].join('|');
+}
+
+/** Infers trufa (nose) color from phenotype data */
+function noseColor(pheno) {
+  const base = (pheno.baseColor || '').toLowerCase();
+  if (base.includes('lilás') || base.includes('lilas')) return 'Lilás';
+  if (base.includes('chocolate') || base.includes('beaver')) return 'Marrom';
+  if (base.includes('azul') || base.includes('cinza')) return 'Acinzentada';
+  return 'Preta';
+}
+
+/** Returns a human-readable merle status */
+function merleStatus(pheno) {
+  if (pheno.doubleMerle) return 'Double Merle (M/M)';
+  if ((pheno.marking || '').toLowerCase().includes('merle')) return 'Merle (M/m)';
+  return 'Sem Merle';
+}
+
+function renderResults(male, female, litter, stats, coiResult, appState) {
+  const res   = document.getElementById('sim-results');
+  const total = litter.length;
+
+  // ── 1. Build unique phenotype map ────────────────────────
+  const uniqueMap = new Map(); // key → { pheno, count }
+  for (const pup of litter) {
+    const pheno = pup.phenotype || {};
+    const key   = phenotypeKey(pheno);
+    if (!uniqueMap.has(key)) {
+      uniqueMap.set(key, { pheno, count: 0, sample: pup });
+    }
+    uniqueMap.get(key).count++;
+  }
+
+  // Sort by frequency descending
+  const uniqueEntries = [...uniqueMap.values()].sort((a, b) => b.count - a.count);
+  const entries       = Object.entries(stats.counts).sort((a, b) => b[1] - a[1]);
+
+  // ── 2. COI banner ─────────────────────────────────────────
   const coiHTML = coiResult.hasInbreeding
     ? `<div class="alert alert-warning">
         <strong>⚠️ Consanguinidade detectada — COI: ${coiResult.totalCOI}% (risco ${coiResult.risk})</strong><br>
@@ -227,12 +261,53 @@ function renderResults(male, female, litter, stats, coiResult, appState) {
        </div>`
     : `<div class="alert alert-success">✅ Nenhuma consanguinidade detectada nas últimas 4 gerações.</div>`;
 
+  // ── 3. Phenotype cards HTML ───────────────────────────────
+  const phenoCardsHTML = uniqueEntries.map(({ pheno, count }) => {
+    const pct     = Math.round((count / total) * 100);
+    const col     = swatchColor(pheno.label || pheno.baseColor || '');
+    const nose    = noseColor(pheno);
+    const merle   = merleStatus(pheno);
+    const dil     = pheno.dilution === 'diluída' ? 'Diluída' : 'Densa';
+    const marking = pheno.marking || 'Sólido';
+
+    const healthAlerts = [];
+    if (pheno.doubleMerle) {
+      healthAlerts.push(`<div class="alert alert-danger" style="margin-top:10px;padding:8px 12px;font-size:.8rem">
+        ⚠️ <strong>Double Merle (M/M)</strong> — Risco elevado de surdez e cegueira.
+      </div>`);
+    }
+    if ((pheno.baseColor || '').toLowerCase().includes('azul') ||
+        (pheno.baseColor || '').toLowerCase().includes('lilás') ||
+        (pheno.baseColor || '').toLowerCase().includes('lilas')) {
+      healthAlerts.push(`<div class="alert alert-warning" style="margin-top:10px;padding:8px 12px;font-size:.8rem">
+        ⚠️ <strong>Diluição d/d</strong> — Risco de Color Dilution Alopecia (CDA). Monitorar pelagem.
+      </div>`);
+    }
+
+    return `
+      <div class="phenotype-card">
+        <div class="phenotype-card-chance">CHANCE: ${pct}%</div>
+        <div class="phenotype-card-label">
+          <div class="phenotype-card-swatch" style="background:${col}"></div>
+          ${pheno.label || pheno.baseColor || '—'}
+        </div>
+        <div class="phenotype-card-tags">
+          <span class="phenotype-tag"><strong>Cor Base:</strong> ${pheno.baseColor || '—'}</span>
+          <span class="phenotype-tag"><strong>Marcação:</strong> ${marking}</span>
+          <span class="phenotype-tag"><strong>Trufa:</strong> ${nose}</span>
+          <span class="phenotype-tag"><strong>Diluição:</strong> ${dil}</span>
+          <span class="phenotype-tag"><strong>Merle:</strong> ${merle}</span>
+        </div>
+        ${healthAlerts.join('')}
+      </div>`;
+  }).join('');
+
   res.innerHTML = `
     <div class="card" style="margin-top:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <div>
           <div style="font-family:var(--font-display);font-size:1.1rem;color:var(--gold)">${male.name} × ${female.name}</div>
-          <div class="text-muted text-sm">${total} filhotes simulados</div>
+          <div class="text-muted text-sm">${uniqueEntries.length} fenótipo${uniqueEntries.length!==1?'s':''} possível${uniqueEntries.length!==1?'s':''}</div>
         </div>
         <button class="btn btn-primary btn-sm" id="btn-pdf">📄 Certificado PDF</button>
       </div>
@@ -240,33 +315,9 @@ function renderResults(male, female, litter, stats, coiResult, appState) {
       ${coiHTML}
       ${(stats.alerts || []).map(a => `<div class="alert alert-danger">${a}</div>`).join('')}
 
-      <div class="section-title" style="margin-bottom:12px">Probabilidades de Cor</div>
-      <div class="result-grid">
-        ${entries.map(([label, count]) => {
-          const pct = Math.round((count / total) * 100);
-          const col = swatchColor(label);
-          return `<div class="result-row">
-            <div class="result-swatch" style="background:${col}"></div>
-            <div class="result-label">${label}</div>
-            <div class="result-bar-wrap">
-              <div class="result-bar" style="width:${pct}%;background:${col};opacity:.85"></div>
-            </div>
-            <div class="result-pct">${pct}%</div>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:10px">
-      <div class="section-title" style="margin-bottom:10px">Amostra — Primeiros 16 Filhotes</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${litter.slice(0, 16).map(pup => `
-          <div style="padding:5px 10px;background:var(--surface2);border-radius:6px;font-size:.78rem;
-            display:flex;align-items:center;gap:6px">
-            <div style="width:10px;height:10px;border-radius:50%;background:${swatchColor(pup.phenotype?.label||'')};flex-shrink:0"></div>
-            <span>${pup.phenotype?.label || '—'}</span>
-            ${pup.phenotype?.doubleMerle ? '<span style="color:var(--red);font-size:.7rem;font-weight:700">⚠ DM</span>' : ''}
-          </div>`).join('')}
+      <div class="section-title" style="margin-bottom:12px">Fenótipos Possíveis</div>
+      <div class="phenotype-cards">
+        ${phenoCardsHTML}
       </div>
     </div>
 

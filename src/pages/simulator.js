@@ -227,6 +227,17 @@ function merleStatus(pheno) {
   return 'Sem Merle';
 }
 
+/** Returns true when the phenotype carries the d/d dilution gene (Azul or Lilás) */
+function isDiluted(pheno) {
+  const base = (pheno.baseColor || '').toLowerCase();
+  return base.includes('azul') || base.includes('lilás') || base.includes('lilas');
+}
+
+/** Simple portuguese pluralization helper */
+function pluralizePT(count, singular, plural) {
+  return count !== 1 ? plural : singular;
+}
+
 function renderResults(male, female, litter, stats, coiResult, appState) {
   const res   = document.getElementById('sim-results');
   const total = litter.length;
@@ -276,9 +287,7 @@ function renderResults(male, female, litter, stats, coiResult, appState) {
         ⚠️ <strong>Double Merle (M/M)</strong> — Risco elevado de surdez e cegueira.
       </div>`);
     }
-    if ((pheno.baseColor || '').toLowerCase().includes('azul') ||
-        (pheno.baseColor || '').toLowerCase().includes('lilás') ||
-        (pheno.baseColor || '').toLowerCase().includes('lilas')) {
+    if (isDiluted(pheno)) {
       healthAlerts.push(`<div class="alert alert-warning" style="margin-top:10px;padding:8px 12px;font-size:.8rem">
         ⚠️ <strong>Diluição d/d</strong> — Risco de Color Dilution Alopecia (CDA). Monitorar pelagem.
       </div>`);
@@ -307,7 +316,7 @@ function renderResults(male, female, litter, stats, coiResult, appState) {
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
         <div>
           <div style="font-family:var(--font-display);font-size:1.1rem;color:var(--gold)">${male.name} × ${female.name}</div>
-          <div class="text-muted text-sm">${uniqueEntries.length} fenótipo${uniqueEntries.length!==1?'s':''} possível${uniqueEntries.length!==1?'s':''}</div>
+          <div class="text-muted text-sm">${uniqueEntries.length} ${pluralizePT(uniqueEntries.length, 'fenótipo possível', 'fenótipos possíveis')}</div>
         </div>
         <button class="btn btn-primary btn-sm" id="btn-pdf">📄 Certificado PDF</button>
       </div>

@@ -204,34 +204,34 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
   color: var(--text-dim); margin: 14px 0 8px; }
 
 /* ── Dog Cards ────────────────────────────────────────────── */
-.dog-list { display: flex; flex-direction: column; gap: 8px; }
+.dog-list { display: flex; flex-direction: column; gap: 10px; }
 .dog-card {
-  display: flex; align-items: center; gap: 10px;
-  padding: 12px; background: var(--surface1);
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px; background: var(--surface1);
   border: 1px solid var(--border); border-radius: var(--radius);
   transition: border-color .18s;
 }
 .dog-card:hover { border-color: rgba(200,134,10,.4); }
 .dog-avatar {
-  width: 44px; height: 44px; border-radius: 50%;
+  width: 60px; height: 60px; border-radius: 50%;
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.4rem; flex-shrink: 0;
+  font-size: 1.8rem; flex-shrink: 0;
 }
 .dog-avatar-photo {
-  width: 44px; height: 44px; border-radius: 50%;
+  width: 60px; height: 60px; border-radius: 50%;
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.4rem; flex-shrink: 0;
+  font-size: 1.8rem; flex-shrink: 0;
 }
 .dog-card-photo {
-  width: 44px; height: 44px; border-radius: 50%;
+  width: 60px; height: 60px; border-radius: 50%;
   object-fit: cover; flex-shrink: 0;
-  border: 2px solid var(--border);
+  border: 2px solid #D4AF37;
 }
 .dog-info   { flex: 1; min-width: 0; }
-.dog-name   { font-weight: 600; font-size: .95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dog-breed-tag { font-size: .75rem; color: var(--text-muted); margin-top: 1px; }
+.dog-name   { font-weight: 700; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.dog-breed-tag { font-size: .78rem; color: var(--text-muted); margin-top: 3px; }
 .dog-sex-badge {
   padding: 2px 7px; border-radius: 12px; font-size: .78rem; font-weight: 700; flex-shrink: 0;
 }
@@ -341,3 +341,45 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
   position: absolute; left: -9999px; top: 0;
   width: 794px; pointer-events: none;
 }
+
+/* ── Phenotype Result Cards ───────────────────────────────── */
+.phenotype-cards { display: flex; flex-direction: column; gap: 14px; }
+.phenotype-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 16px;
+  transition: border-color .2s;
+}
+.phenotype-card:hover { border-color: rgba(200,134,10,.45); }
+.phenotype-card-chance {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 4px;
+  letter-spacing: .02em;
+}
+.phenotype-card-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 10px;
+}
+.phenotype-card-swatch {
+  width: 18px; height: 18px; border-radius: 50%;
+  flex-shrink: 0; border: 2px solid rgba(255,255,255,.15);
+}
+.phenotype-card-tags {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0;
+}
+.phenotype-tag {
+  padding: 3px 10px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: .75rem;
+  color: var(--text-muted);
+}
+.phenotype-tag strong { color: var(--text); font-weight: 600; }

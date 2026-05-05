@@ -203,7 +203,6 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
 .section-title  { font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted); font-weight: 600; }
 .divider-label  { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em;
   color: var(--text-dim); margin: 14px 0 8px; }
-
 /* ── Dog Cards ────────────────────────────────────────────── */
 .dog-list {
   display: grid;
@@ -352,3 +351,45 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
   position: absolute; left: -9999px; top: 0;
   width: 794px; pointer-events: none;
 }
+
+/* ── Phenotype Result Cards ───────────────────────────────── */
+.phenotype-cards { display: flex; flex-direction: column; gap: 14px; }
+.phenotype-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 16px;
+  transition: border-color .2s;
+}
+.phenotype-card:hover { border-color: rgba(200,134,10,.45); }
+.phenotype-card-chance {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 4px;
+  letter-spacing: .02em;
+}
+.phenotype-card-label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+  display: flex; align-items: center; gap: 10px;
+}
+.phenotype-card-swatch {
+  width: 18px; height: 18px; border-radius: 50%;
+  flex-shrink: 0; border: 2px solid rgba(255,255,255,.15);
+}
+.phenotype-card-tags {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 0;
+}
+.phenotype-tag {
+  padding: 3px 10px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  font-size: .75rem;
+  color: var(--text-muted);
+}
+.phenotype-tag strong { color: var(--text); font-weight: 600; }

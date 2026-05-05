@@ -191,6 +191,7 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
 /* ── Badges ───────────────────────────────────────────────── */
 .badge       { padding: 2px 8px; border-radius: 12px; font-size: .72rem; font-weight: 600; }
 .badge-gold  { background: var(--gold-faint); color: var(--gold); border: 1px solid var(--border); }
+.badge-sm    { font-size: .68rem; }
 
 /* ── Page Header ──────────────────────────────────────────── */
 .page-header { margin-bottom: 20px; }
@@ -204,40 +205,50 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
   color: var(--text-dim); margin: 14px 0 8px; }
 
 /* ── Dog Cards ────────────────────────────────────────────── */
-.dog-list { display: flex; flex-direction: column; gap: 10px; }
+.dog-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+  padding: 16px 0;
+}
 .dog-card {
-  display: flex; align-items: center; gap: 12px;
-  padding: 16px; background: var(--surface1);
-  border: 1px solid var(--border); border-radius: var(--radius);
+  display: flex; flex-direction: column;
+  background-color: var(--surface1);
+  border: 1px solid var(--border); border-radius: 12px;
+  overflow: hidden; text-align: center;
+  position: relative;
   transition: border-color .18s;
 }
 .dog-card:hover { border-color: rgba(200,134,10,.4); }
 .dog-avatar {
-  width: 60px; height: 60px; border-radius: 50%;
+  width: 100%; height: 140px;
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.8rem; flex-shrink: 0;
+  font-size: 2.8rem;
+  border-bottom: 2px solid var(--gold);
 }
 .dog-avatar-photo {
-  width: 60px; height: 60px; border-radius: 50%;
+  width: 100%; height: 140px;
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.8rem; flex-shrink: 0;
+  font-size: 2.8rem;
+  border-bottom: 2px solid var(--gold);
 }
 .dog-card-photo {
-  width: 60px; height: 60px; border-radius: 50%;
-  object-fit: cover; flex-shrink: 0;
-  border: 2px solid #D4AF37;
+  width: 100%; height: 140px;
+  object-fit: cover;
+  border-radius: 0; border: none;
+  border-bottom: 2px solid var(--gold);
 }
-.dog-info   { flex: 1; min-width: 0; }
-.dog-name   { font-weight: 700; font-size: 1.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
-.dog-breed-tag { font-size: .78rem; color: var(--text-muted); margin-top: 3px; }
+.dog-info   { padding: 8px 10px 4px; }
+.dog-name   { font-weight: 700; font-size: 1.1rem; color: var(--text); margin-top: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dog-breed-tag { font-size: .8rem; color: var(--text-muted); margin-top: 3px; }
 .dog-sex-badge {
-  padding: 2px 7px; border-radius: 12px; font-size: .78rem; font-weight: 700; flex-shrink: 0;
+  padding: 2px 7px; border-radius: 12px; font-size: .78rem; font-weight: 700;
 }
 .dog-sex-badge.m { background: rgba(96,165,250,.15); color: #93c5fd; }
 .dog-sex-badge.f { background: rgba(244,114,182,.15); color: #f9a8d4; }
-.dog-actions { display: flex; gap: 2px; flex-shrink: 0; }
+.dog-actions { display: flex; justify-content: center; align-items: center; gap: 12px; padding: 12px; margin-top: auto; }
 
 /* ── Empty State ──────────────────────────────────────────── */
 .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }

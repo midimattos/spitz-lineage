@@ -78,9 +78,12 @@ export function renderDogs(container, appState) {
 function dogCard(dog, isPedigree = false) {
   const emoji = dog.sex === 'M' ? '🐕' : '🐩';
   const label = dog.phenotype?.label || dog.phenotype?.baseColor || 'Cor desconhecida';
+  const avatar = dog.photoURL
+    ? `<img src="${dog.photoURL}" class="dog-card-photo" alt="${dog.name}" />`
+    : `<div class="dog-avatar-photo">${emoji}</div>`;
   return `
     <div class="dog-card">
-      <div class="dog-avatar">${emoji}</div>
+      ${avatar}
       <div class="dog-info">
         <div class="dog-name">${dog.name}</div>
         <div class="dog-breed-tag">${label}</div>

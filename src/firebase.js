@@ -1,6 +1,7 @@
 // ============================================================
 // FIREBASE SERVICE — Spitz Lineage Manager
-// Usa Firebase SDK via CDN (ESM)
+// Auth + Firestore: Firebase (plano gratuito Spark)
+// Fotos:           Cloudinary (gratuito, substitui Firebase Storage)
 // ============================================================
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
@@ -9,7 +10,7 @@ import { getFirestore, collection, doc, getDoc, getDocs,
   addDoc, updateDoc, deleteDoc, serverTimestamp }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-// ── Config: lido do window.__ENV__ injetado pelo index.html ──
+// ── Config Firebase ───────────────────────────────────────────
 const cfg = window.__ENV__ || {};
 const firebaseConfig = {
   apiKey:            cfg.FIREBASE_API_KEY            || '',
@@ -28,6 +29,45 @@ export const db   = getFirestore(app);
 export const login  = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
 export const logout = ()          => signOut(auth);
 export const onAuth = (cb)        => onAuthStateChanged(auth, cb);
+
+// ── Photo Upload via Cloudinary ───────────────────────────────
+// Firebase Storage exige plano pago — Cloudinary é gratuito (25 GB)
+// Configuração: veja INSTRUCOES_DEPLOY.md → Passo Cloudinary
+const CLOUDINARY_CLOUD_NAME    = cfg.CLOUDINARY_CLOUD_NAME    || '';
+const CLOUDINARY_UPLOAD_PRESET = cfg.CLOUDINARY_UPLOAD_PRESET || '';
+
+export async function uploadDogPhoto(uid, file, dogId) {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    throw new Error(
+      'Cloudinary não configurado.\n' +
+      'Adicione CLOUDINARY_CLOUD_NAME e CLOUDINARY_UPLOAD_PRESET no window.__ENV__ do index.html.\n' +
+      'Consulte INSTRUCOES_DEPLOY.md para o passo a passo.'
+    );
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  formData.append('folder',     `spitz/${uid}`);
+  formData.append('public_id',  `dog_${dogId}`);
+
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+    { method: 'POST', body: formData }
+  );
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error('Erro no upload: ' + (err.error?.message || res.statusText));
+  }
+
+  const data = await res.json();
+  // URL com redimensionamento automático 400×400, qualidade e formato otimizados
+  return data.secure_url.replace(
+    '/upload/',
+    '/upload/w_400,h_400,c_fill,q_auto,f_auto/'
+  );
+}
 
 // ── Dogs CRUD ─────────────────────────────────────────────────
 const dogsCol = (uid) => collection(db, 'users', uid, 'dogs');

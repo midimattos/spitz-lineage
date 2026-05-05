@@ -2,14 +2,42 @@
 // DOG FORM PAGE — Cadastro com Abas, Autocomplete, Inferência
 // ============================================================
 import { saveDog, getDog, getAllDogs, searchDogsByName } from '../firebase.js';
+import { uploadDogPhoto } from '../firebase.js';
 import { state } from '../app.js';
-import { inferGenotype, genotypeToPhenotype, COLOR_PRESETS, PROVEN_COLOR_OPTIONS, LOCI } from '../utils/genetics.js';
+import { inferGenotype, genotypeToPhenotype, LOCI } from '../utils/genetics.js';
+
+// ── Atalhos de cor (Presets) ─────────────────────────────────
+// Cada preset define: baseColor, marking, nose, dilution
+// Regra: Lilás = Chocolate + Diluída + trufa Lilás
+//        Beaver = Laranja + Densa + trufa Marrom/Fígado
+const LOCAL_PRESETS = {
+  'Preto':      { baseColor:'Preto',        marking:'Sólido',    nose:'Preta',                 dilution:'densa'   },
+  'Chocolate':  { baseColor:'Chocolate',    marking:'Sólido',    nose:'Marrom/Fígado (Beaver)', dilution:'densa'   },
+  'Lilás':      { baseColor:'Lilás',        marking:'Sólido',    nose:'Lilás',                  dilution:'diluída' },
+  'Beaver':     { baseColor:'Beaver',       marking:'Sólido',    nose:'Marrom/Fígado (Beaver)', dilution:'densa'   },
+  'Laranja':    { baseColor:'Laranja/Sable',marking:'Sable',     nose:'Preta',                  dilution:'densa'   },
+  'Azul':       { baseColor:'Azul/Cinza',   marking:'Sólido',    nose:'Azul/Acinzentada',       dilution:'diluída' },
+  'Creme':      { baseColor:'Creme/Branco', marking:'Sólido',    nose:'Preta',                  dilution:'densa'   },
+  'Wolf Sable': { baseColor:'Wolf Sable',   marking:'Wolf Sable',nose:'Preta',                  dilution:'densa'   },
+  'Tricolor':   { baseColor:'Tricolor',     marking:'Tricolor',  nose:'Preta',                  dilution:'densa'   },
+  'Merle':      { baseColor:'Merle',        marking:'Merle',     nose:'Preta',                  dilution:'densa'   },
+};
+
+// ── Chips de histórico de cores produzidas ───────────────────
+// Lilás e Beaver são chips independentes com lógica de inferência distinta
+const LOCAL_PROVEN_COLORS = [
+  'Preto','Chocolate','Lilás','Beaver',
+  'Laranja/Sable','Wolf Sable','Azul/Cinza',
+  'Creme/Branco','Merle','Tricolor','Tan Points',
+];
 
 let fs = resetFormState();
 
 function resetFormState() {
   return {
     provenColors: [],
+    photoURL: null,
+    photoFile: null,
     fatherId: null, fatherName: '', fatherPhenotype: null,
     motherId: null, motherName: '', motherPhenotype: null,
     patGrandfatherId: null, patGrandfatherName: '',
@@ -27,6 +55,7 @@ export async function renderDogForm(container, appState) {
     existing = await getDog(appState.user.uid, appState.editingDogId);
     if (existing) {
       fs.provenColors    = existing.provenColors || [];
+      fs.photoURL        = existing.photoURL || null;
       fs.fatherId        = existing.pedigree?.fatherId || null;
       fs.fatherName      = existing.pedigree?.fatherName || '';
       fs.motherId        = existing.pedigree?.motherId || null;
@@ -42,9 +71,14 @@ export async function renderDogForm(container, appState) {
     }
   }
 
-  const BASE_COLORS = ['Preto','Chocolate','Beaver/Lilás','Laranja/Sable','Wolf Sable','Creme/Branco','Azul/Cinza','Merle','Tricolor'];
+  const BASE_COLORS = [
+    'Preto', 'Chocolate', 'Lilás', 'Beaver',
+    'Laranja/Sable', 'Wolf Sable', 'Creme/Branco',
+    'Azul/Cinza', 'Merle', 'Tricolor'
+  ];
   const MARKINGS    = ['Sólido','Sable','Wolf Sable','Tan Points','Tricolor','Particolor','Merle','Branco Extremo','Máscara'];
-  const NOSES       = ['Preta','Marrom','Lilás','Azul/Acinzentada','Carne'];
+  // Trufa: Lilás e Marrom/Fígado (Beaver) agora são opções separadas
+  const NOSES       = ['Preta','Marrom/Fígado (Beaver)','Lilás','Azul/Acinzentada','Carne'];
   const DILUTIONS   = ['Densa','Diluída'];
   const MERLE_TYPES = ['Não Merle','Merle','Harlequin'];
   const INTENSITIES = ['Alta (Vívida)','Média','Baixa (Pálida)'];
@@ -62,7 +96,7 @@ export async function renderDogForm(container, appState) {
     <div class="tabs" id="form-tabs">
       <button class="tab-btn active" data-tab="basic">1. Ficha</button>
       <button class="tab-btn" data-tab="parents">2. Pais</button>
-      <button class="tab-btn" data-tab="grandparents">3. Avós</button>
+      <button class="tab-btn" data-tab="grandparents" id="tab-btn-grandparents">3. Avós</button>
       <button class="tab-btn" data-tab="genetics">4. DNA</button>
     </div>
 
@@ -74,6 +108,21 @@ export async function renderDogForm(container, appState) {
           <label class="form-label">Nome do Cão *</label>
           <input class="form-input" name="name" placeholder="ex: Lord Chocolate von Haus"
             value="${existing?.name||''}" required />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Foto do Cão</label>
+          <div class="photo-upload-wrap" id="photo-upload-wrap">
+            ${existing?.photoURL
+              ? `<img src="${existing.photoURL}" class="photo-preview" id="photo-preview" alt="Foto" />`
+              : `<div class="photo-placeholder" id="photo-placeholder">
+                  <span style="font-size:2rem">📷</span>
+                  <span class="text-muted text-sm">Toque para adicionar foto</span>
+                </div>`
+            }
+            <input type="file" id="photo-file-input" accept="image/*" style="display:none" />
+          </div>
+          <p class="text-sm text-muted mt-8" id="photo-status">${existing?.photoURL ? '✓ Foto carregada' : 'JPG ou PNG · Máx 5MB'}</p>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div class="form-group">
@@ -136,7 +185,7 @@ export async function renderDogForm(container, appState) {
         <div class="form-group">
           <label class="form-label">Atalhos Rápidos de Cor</label>
           <div class="chips-group">
-            ${Object.keys(COLOR_PRESETS).map(p=>`<button type="button" class="chip" data-preset="${p}">${p}</button>`).join('')}
+            ${Object.keys(LOCAL_PRESETS).map(p=>`<button type="button" class="chip" data-preset="${p}">${p}</button>`).join('')}
           </div>
         </div>
 
@@ -144,7 +193,7 @@ export async function renderDogForm(container, appState) {
           <label class="form-label">Cores Já Produzidas por Este Cão</label>
           <p class="text-sm text-muted" style="margin-bottom:8px">Prioridade máxima na inferência genética.</p>
           <div class="chips-group" id="proven-chips">
-            ${PROVEN_COLOR_OPTIONS.map(c=>`
+            ${LOCAL_PROVEN_COLORS.map(c=>`
               <button type="button" class="chip ${fs.provenColors.includes(c)?'active':''}"
                 data-proven="${c}">${c}</button>`).join('')}
           </div>
@@ -224,6 +273,24 @@ function ancestorField(label, id, field) {
 function initFormHandlers(container, appState) {
   const uid = appState.user.uid;
 
+  // ── Photo upload
+  const photoWrap  = document.getElementById('photo-upload-wrap');
+  const photoInput = document.getElementById('photo-file-input');
+  photoWrap?.addEventListener('click', () => photoInput?.click());
+  photoInput?.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { alert('Foto muito grande. Máximo 5MB.'); return; }
+    fs.photoFile = file;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      photoWrap.innerHTML = `<img src="${ev.target.result}" class="photo-preview" id="photo-preview" alt="Foto" />`;
+      const status = document.getElementById('photo-status');
+      if (status) status.textContent = '✓ Foto selecionada (será enviada ao salvar)';
+    };
+    reader.readAsDataURL(file);
+  });
+
   // ── Tabs
   container.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -238,17 +305,31 @@ function initFormHandlers(container, appState) {
   // ── Presets
   container.querySelectorAll('[data-preset]').forEach(chip => {
     chip.addEventListener('click', () => {
-      const p = COLOR_PRESETS[chip.dataset.preset];
+      const p = LOCAL_PRESETS[chip.dataset.preset];
       if (!p) return;
       const form = document.getElementById('dog-form');
-      if (p.phenotype?.baseColor) {
-        const v = p.phenotype.baseColor.toLowerCase().replace(/\//g,'_').replace(/ /g,'_');
-        form?.baseColor && [...form.baseColor.options].forEach(o=>{ if(o.value===v) o.selected=true; });
+      if (!form) return;
+
+      // Helper: set a select by matching text content or value
+      function setSelect(fieldName, targetValue) {
+        const sel = form[fieldName];
+        if (!sel) return;
+        const target = targetValue.toLowerCase();
+        [...sel.options].forEach(o => {
+          o.selected = o.value.toLowerCase() === target ||
+                       o.textContent.toLowerCase().includes(target);
+        });
       }
-      if (p.phenotype?.marking) {
-        const v = p.phenotype.marking.toLowerCase().replace(/ /g,'_');
-        form?.marking && [...form.marking.options].forEach(o=>{ if(o.value===v) o.selected=true; });
-      }
+
+      if (p.baseColor) setSelect('baseColor', p.baseColor);
+      if (p.marking)   setSelect('marking',   p.marking);
+      if (p.nose)      setSelect('nose',       p.nose);
+      if (p.dilution)  setSelect('dilution',   p.dilution);
+
+      // Visual feedback on chip
+      container.querySelectorAll('[data-preset]').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      setTimeout(() => chip.classList.remove('active'), 1500);
     });
   });
 
@@ -290,7 +371,10 @@ function initFormHandlers(container, appState) {
         filledCount++;
       }
     }
-    if (filledCount > 0) showAutoFillToast(`${filledCount} avô(s) paterno(s) preenchido(s) automaticamente ✓`);
+    if (filledCount > 0) {
+      showAutoFillToast(`${filledCount} avô(s) paterno(s) preenchido(s) automaticamente ✓`);
+      pulseTabButton('tab-btn-grandparents');
+    }
   });
 
   // ── Mother autocomplete
@@ -316,7 +400,10 @@ function initFormHandlers(container, appState) {
         filledCount++;
       }
     }
-    if (filledCount > 0) showAutoFillToast(`${filledCount} avô(s) materno(s) preenchido(s) automaticamente ✓`);
+    if (filledCount > 0) {
+      showAutoFillToast(`${filledCount} avô(s) materno(s) preenchido(s) automaticamente ✓`);
+      pulseTabButton('tab-btn-grandparents');
+    }
   });
 
   // ── Ancestor autocompletes
@@ -338,6 +425,17 @@ function initFormHandlers(container, appState) {
     const btn = form.querySelector('[type=submit]');
     btn.disabled = true; btn.textContent = 'Salvando…';
     try {
+      // Upload photo if new file selected
+      let photoURL = fs.photoURL || null;
+      if (fs.photoFile) {
+        btn.textContent = 'Enviando foto…';
+        try {
+          photoURL = await uploadDogPhoto(uid, fs.photoFile, appState.editingDogId || `new_${Date.now()}`);
+        } catch(photoErr) {
+          console.warn('Falha no upload da foto, continuando sem foto:', photoErr);
+        }
+      }
+
       const phenotype = {
         baseColor: form.baseColor.value,
         marking:   form.marking.value,
@@ -356,6 +454,7 @@ function initFormHandlers(container, appState) {
         name: form.name.value.trim(),
         sex: form.sex.value,
         belongsToMe: form.belongsToMe.value === 'true',
+        photoURL,
         phenotype,
         genotype,
         provenColors: fs.provenColors,
@@ -469,4 +568,25 @@ function updateGenotypePreview() {
         </div>`;
       }).join('')}
     </div>`;
+}
+
+function pulseTabButton(btnId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  btn.style.transition = 'all .2s ease';
+  btn.style.background = 'rgba(80,200,100,0.25)';
+  btn.style.color      = '#4caf50';
+  btn.style.boxShadow  = '0 0 12px rgba(76,175,80,0.6)';
+  // Add a dot indicator
+  if (!btn.querySelector('.glow-dot')) {
+    const dot = document.createElement('span');
+    dot.className = 'glow-dot';
+    dot.style.cssText = 'display:inline-block;width:6px;height:6px;background:#4caf50;border-radius:50%;margin-left:5px;vertical-align:middle;';
+    btn.appendChild(dot);
+  }
+  setTimeout(() => {
+    btn.style.background = '';
+    btn.style.color      = '';
+    btn.style.boxShadow  = '';
+  }, 3000);
 }

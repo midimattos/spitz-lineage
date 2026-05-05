@@ -1,9 +1,8 @@
 // ============================================================
-// SIMULATOR PAGE — Ninhada, COI, PDF
+// SIMULATOR PAGE — Ninhada, COI Profundo, PDF Premium, Matchmaker
 // ============================================================
-import { collectAncestorIds, getDog } from '../firebase.js';
-import { simulateLitter, litterStats, calculateCOI } from '../utils/genetics.js';
-import { generateLitterCertificate } from '../utils/pdf.js';
+import { getDog } from '../firebase.js';
+import { simulateLitter, litterStats } from '../utils/genetics.js';
 
 export function renderSimulator(container, appState) {
   const myDogs = appState.dogs.filter(d => d.belongsToMe);
@@ -13,47 +12,115 @@ export function renderSimulator(container, appState) {
   container.innerHTML = `
     <div class="page-header">
       <h1 class="font-display">Simulador de Ninhada</h1>
-      <p>Probabilidades genéticas e análise de consanguinidade</p>
+      <p>Probabilidades genéticas, consanguinidade e matchmaking</p>
     </div>
 
     ${myDogs.length < 2 ? `
       <div class="alert alert-warning">
-        ⚠️ Você precisa ter pelo menos um macho e uma fêmea cadastrados em "Meu Canil" para usar o simulador.
+        ⚠️ Você precisa ter pelo menos um macho e uma fêmea em "Meu Canil" para usar o simulador.
       </div>
     ` : ''}
 
-    <div class="card">
-      <div class="form-group">
-        <label class="form-label">♂ Macho</label>
-        <select class="form-select" id="sim-male">
-          <option value="">— Selecione —</option>
-          ${males.map(d=>`<option value="${d.id}">${d.name} · ${d.phenotype?.label||''}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">♀ Fêmea</label>
-        <select class="form-select" id="sim-female">
-          <option value="">— Selecione —</option>
-          ${females.map(d=>`<option value="${d.id}">${d.name} · ${d.phenotype?.label||''}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Filhotes na Simulação</label>
-        <select class="form-select" id="sim-size">
-          <option value="20">20 filhotes (padrão)</option>
-          <option value="50">50 filhotes</option>
-          <option value="100">100 filhotes (alta precisão)</option>
-        </select>
-      </div>
-      <button class="btn btn-primary btn-full" id="btn-simulate">🧬 Simular Ninhada</button>
+    <div class="tabs" style="margin-bottom:0">
+      <button class="tab-btn active" data-sim-tab="manual">🧬 Simular Casal</button>
+      <button class="tab-btn" data-sim-tab="matchmaker">✨ Matchmaker</button>
     </div>
 
-    <div id="sim-results"></div>
+    <!-- SIMULAÇÃO MANUAL -->
+    <div id="sim-panel-manual">
+      <div class="card" style="border-top-left-radius:0;border-top-right-radius:0">
+        <div class="form-group">
+          <label class="form-label">♂ Macho</label>
+          <select class="form-select" id="sim-male">
+            <option value="">— Selecione —</option>
+            ${males.map(d=>`<option value="${d.id}">${d.name} · ${d.phenotype?.label||''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">♀ Fêmea</label>
+          <select class="form-select" id="sim-female">
+            <option value="">— Selecione —</option>
+            ${females.map(d=>`<option value="${d.id}">${d.name} · ${d.phenotype?.label||''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Filhotes na Simulação</label>
+          <select class="form-select" id="sim-size">
+            <option value="20">20 filhotes (padrão)</option>
+            <option value="50">50 filhotes</option>
+            <option value="100">100 filhotes (alta precisão)</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-simulate">🧬 Simular Ninhada</button>
+      </div>
+      <div id="sim-results"></div>
+    </div>
+
+    <!-- MATCHMAKER -->
+    <div id="sim-panel-matchmaker" style="display:none">
+      <div class="card" style="border-top-left-radius:0;border-top-right-radius:0">
+        <div class="alert alert-info" style="margin-bottom:14px">
+          ✨ <strong>Matchmaker Inteligente</strong><br>
+          Diga o que deseja produzir e o sistema encontra o melhor casal do seu canil automaticamente.
+        </div>
+        <div class="form-group">
+          <label class="form-label">🎯 Cor desejada nos filhotes</label>
+          <select class="form-select" id="mm-target">
+            <option value="">— O que você quer produzir? —</option>
+            ${TARGET_COLORS.map(c=>`<option value="${c.value}">${c.label}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary btn-full" id="btn-matchmaker">✨ Encontrar Melhor Casal</button>
+      </div>
+      <div id="mm-results"></div>
+    </div>
   `;
 
-  document.getElementById('btn-simulate')?.addEventListener('click', () => runSimulation(appState));
+  // Tab switching
+  container.querySelectorAll('[data-sim-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('[data-sim-tab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const tab = btn.dataset.simTab;
+      document.getElementById('sim-panel-manual').style.display     = tab === 'manual'      ? '' : 'none';
+      document.getElementById('sim-panel-matchmaker').style.display = tab === 'matchmaker'  ? '' : 'none';
+    });
+  });
+
+  document.getElementById('btn-simulate')?.addEventListener('click',   () => runSimulation(appState));
+  document.getElementById('btn-matchmaker')?.addEventListener('click', () => runMatchmaker(appState));
 }
 
+// ─────────────────────────────────────────────────────────────
+// COLOUR SWATCHES
+// ─────────────────────────────────────────────────────────────
+const SWATCH = {
+  preto:'#1a1a1a', chocolate:'#5c3317', beaver:'#8a6040', 'lilás':'#907090',
+  azul:'#5a80a8', laranja:'#c06818', sable:'#b87030', creme:'#e8d8a8',
+  branco:'#f0ece0', merle:'#6888a8', wolf:'#787858', tricolor:'#1a1a1a', tan:'#1a1a1a'
+};
+function swatchColor(label) {
+  const l = (label || '').toLowerCase();
+  for (const [k, v] of Object.entries(SWATCH)) { if (l.includes(k)) return v; }
+  return '#888';
+}
+
+const TARGET_COLORS = [
+  { value:'preto',     label:'⚫ Preto' },
+  { value:'chocolate', label:'🟤 Chocolate' },
+  { value:'beaver',    label:'🟫 Beaver' },
+  { value:'lilás',     label:'💜 Lilás' },
+  { value:'azul',      label:'🔵 Azul' },
+  { value:'laranja',   label:'🟠 Laranja / Sable' },
+  { value:'creme',     label:'🍦 Creme / Branco' },
+  { value:'merle',     label:'🌀 Merle' },
+  { value:'tricolor',  label:'🔶 Tricolor' },
+  { value:'wolf',      label:'🐺 Wolf Sable' },
+];
+
+// ─────────────────────────────────────────────────────────────
+// MANUAL SIMULATION
+// ─────────────────────────────────────────────────────────────
 async function runSimulation(appState) {
   const maleId   = document.getElementById('sim-male').value;
   const femaleId = document.getElementById('sim-female').value;
@@ -64,72 +131,126 @@ async function runSimulation(appState) {
   if (maleId === femaleId)  { alert('Macho e fêmea devem ser diferentes.'); return; }
 
   btn.disabled = true; btn.textContent = 'Calculando…';
-
   try {
     const male   = appState.dogs.find(d => d.id === maleId);
     const female = appState.dogs.find(d => d.id === femaleId);
     const uid    = appState.user.uid;
 
-    // COI
-    const [mAncs, fAncs] = await Promise.all([
-      collectAncestorIds(uid, maleId),
-      collectAncestorIds(uid, femaleId)
-    ]);
-    const dogsMap = Object.fromEntries(appState.dogs.map(d=>[d.id,d]));
-    const coiResult = calculateCOI([...mAncs], [...fAncs], dogsMap);
-
-    // Simulate
-    const litter = simulateLitter(male.genotype || {}, female.genotype || {}, size);
-    const stats  = litterStats(litter);
+    const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
+    const litter    = simulateLitter(male.genotype || {}, female.genotype || {}, size);
+    const stats     = litterStats(litter);
 
     renderResults(male, female, litter, stats, coiResult, appState);
   } catch(err) {
     alert('Erro na simulação: ' + err.message);
+    console.error(err);
   }
   btn.disabled = false; btn.textContent = '🧬 Simular Ninhada';
 }
 
-const SWATCH = {
-  preto:'#222', chocolate:'#5c3317', beaver:'#8a6040', 'lilás':'#907090',
-  azul:'#5a80a8', laranja:'#c06818', sable:'#b87030', creme:'#e8d8a8',
-  branco:'#f0ece0', merle:'#6888a8', wolf:'#787858', tricolor:'#2a2a2a', tan:'#2a2a2a'
-};
-function swatchColor(label) {
-  const l = label.toLowerCase();
-  for (const [k,v] of Object.entries(SWATCH)) { if (l.includes(k)) return v; }
-  return '#888';
+// ─────────────────────────────────────────────────────────────
+// DEEP COI — Feature 3
+// Coleta ancestrais até 4 gerações e calcula coeficiente via
+// aproximação de Wright (0.5^(n+m+1) por ancestral comum)
+// ─────────────────────────────────────────────────────────────
+async function deepCOI(uid, maleId, femaleId, dogsCache) {
+  const dogsMap = Object.fromEntries(dogsCache.map(d => [d.id, d]));
+
+  async function collectAncestors(dogId, gen, visited = new Map()) {
+    if (!dogId || gen > 4) return visited;
+    if (visited.has(dogId)) {
+      visited.get(dogId).generations.push(gen);
+      return visited;
+    }
+    let dog = dogsMap[dogId];
+    if (!dog) {
+      try { dog = await getDog(uid, dogId); if (dog) dogsMap[dogId] = dog; } catch {}
+    }
+    if (!dog) return visited;
+    visited.set(dogId, { name: dog.name || '(sem nome)', generations: [gen] });
+    await Promise.all([
+      collectAncestors(dog.pedigree?.fatherId, gen + 1, visited),
+      collectAncestors(dog.pedigree?.motherId, gen + 1, visited),
+    ]);
+    return visited;
+  }
+
+  const [mAncs, fAncs] = await Promise.all([
+    collectAncestors(maleId,   0),
+    collectAncestors(femaleId, 0),
+  ]);
+
+  const shared = [];
+  for (const [id, mInfo] of mAncs) {
+    if (id === maleId || id === femaleId) continue;
+    if (fAncs.has(id)) {
+      const fInfo     = fAncs.get(id);
+      const minGenM   = Math.min(...mInfo.generations);
+      const minGenF   = Math.min(...fInfo.generations);
+      const coiContrib = Math.pow(0.5, minGenM + minGenF + 1) * 100;
+      shared.push({ id, name: mInfo.name, genM: minGenM, genF: minGenF, coiContrib });
+    }
+  }
+
+  const totalCOI = Math.min(shared.reduce((s, a) => s + a.coiContrib, 0), 50);
+  const risk     = totalCOI < 3 ? 'baixo' : totalCOI < 10 ? 'moderado' : 'alto';
+
+  return {
+    hasInbreeding:   shared.length > 0,
+    shared,
+    totalCOI:        Math.round(totalCOI * 10) / 10,
+    risk,
+    riskPercent:     Math.round(totalCOI * 10) / 10,
+    sharedAncestors: shared.map(a => a.name),
+  };
 }
 
+// ─────────────────────────────────────────────────────────────
+// RENDER RESULTS
+// ─────────────────────────────────────────────────────────────
 function renderResults(male, female, litter, stats, coiResult, appState) {
-  const res = document.getElementById('sim-results');
-  const entries = Object.entries(stats.counts).sort((a,b)=>b[1]-a[1]);
-  const total = stats.total;
+  const res     = document.getElementById('sim-results');
+  const entries = Object.entries(stats.counts).sort((a, b) => b[1] - a[1]);
+  const total   = stats.total;
+
+  const coiHTML = coiResult.hasInbreeding
+    ? `<div class="alert alert-warning">
+        <strong>⚠️ Consanguinidade detectada — COI: ${coiResult.totalCOI}% (risco ${coiResult.risk})</strong><br>
+        <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+          ${coiResult.shared.slice(0, 5).map(a =>
+            `<span style="padding:2px 9px;background:rgba(255,165,0,.15);border:1px solid rgba(255,165,0,.4);
+              border-radius:12px;font-size:.74rem">
+              ${a.name} · Gen.${a.genM}↔${a.genF} · ~${a.coiContrib.toFixed(1)}%
+            </span>`
+          ).join('')}
+        </div>
+       </div>`
+    : `<div class="alert alert-success">✅ Nenhuma consanguinidade detectada nas últimas 4 gerações.</div>`;
 
   res.innerHTML = `
     <div class="card" style="margin-top:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
-        <div style="font-family:var(--font-display);font-size:1.1rem;color:var(--gold)">
-          ${male.name} × ${female.name}
+        <div>
+          <div style="font-family:var(--font-display);font-size:1.1rem;color:var(--gold)">${male.name} × ${female.name}</div>
+          <div class="text-muted text-sm">${total} filhotes simulados</div>
         </div>
-        <button class="btn btn-outline btn-sm" id="btn-pdf">📄 Certificado PDF</button>
+        <button class="btn btn-primary btn-sm" id="btn-pdf">📄 Certificado PDF</button>
       </div>
 
-      ${coiResult.hasInbreeding
-        ? `<div class="alert alert-warning">⚠️ <strong>Consanguinidade detectada — COI estimado: ${coiResult.riskPercent}%</strong><br>
-            Ancestrais em comum: ${coiResult.sharedAncestors.slice(0,5).join(', ')||'(sem nome)'}
-           </div>`
-        : `<div class="alert alert-success">✅ Nenhuma consanguinidade detectada nas últimas gerações.</div>`
-      }
-      ${stats.alerts.map(a=>`<div class="alert alert-danger">${a}</div>`).join('')}
+      ${coiHTML}
+      ${(stats.alerts || []).map(a => `<div class="alert alert-danger">${a}</div>`).join('')}
 
-      <div class="section-title" style="margin-bottom:12px">Probabilidades — ${total} filhotes simulados</div>
+      <div class="section-title" style="margin-bottom:12px">Probabilidades de Cor</div>
       <div class="result-grid">
         ${entries.map(([label, count]) => {
-          const pct = Math.round((count/total)*100);
+          const pct = Math.round((count / total) * 100);
+          const col = swatchColor(label);
           return `<div class="result-row">
-            <div class="result-swatch" style="background:${swatchColor(label)}"></div>
+            <div class="result-swatch" style="background:${col}"></div>
             <div class="result-label">${label}</div>
-            <div class="result-bar-wrap"><div class="result-bar" style="width:${pct}%"></div></div>
+            <div class="result-bar-wrap">
+              <div class="result-bar" style="width:${pct}%;background:${col};opacity:.85"></div>
+            </div>
             <div class="result-pct">${pct}%</div>
           </div>`;
         }).join('')}
@@ -139,27 +260,281 @@ function renderResults(male, female, litter, stats, coiResult, appState) {
     <div class="card" style="margin-top:10px">
       <div class="section-title" style="margin-bottom:10px">Amostra — Primeiros 16 Filhotes</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px">
-        ${litter.slice(0,16).map(pup=>`
+        ${litter.slice(0, 16).map(pup => `
           <div style="padding:5px 10px;background:var(--surface2);border-radius:6px;font-size:.78rem;
             display:flex;align-items:center;gap:6px">
-            <div style="width:8px;height:8px;border-radius:50%;
-              background:${swatchColor(pup.phenotype.label||'')};flex-shrink:0"></div>
-            <span>${pup.phenotype.label}</span>
-            ${pup.phenotype.doubleMerle?'<span style="color:var(--red);font-size:.7rem">⚠DM</span>':''}
+            <div style="width:10px;height:10px;border-radius:50%;background:${swatchColor(pup.phenotype?.label||'')};flex-shrink:0"></div>
+            <span>${pup.phenotype?.label || '—'}</span>
+            ${pup.phenotype?.doubleMerle ? '<span style="color:var(--red);font-size:.7rem;font-weight:700">⚠ DM</span>' : ''}
           </div>`).join('')}
       </div>
     </div>
+
+    <!-- Hidden PDF template rendered here -->
+    <div id="pdf-template" style="position:absolute;left:-9999px;top:0;width:794px">
+      ${buildPDFTemplate(male, female, entries, total, coiResult, appState)}
+    </div>
   `;
 
-  document.getElementById('btn-pdf')?.addEventListener('click', async () => {
-    const btn = document.getElementById('btn-pdf');
-    btn.disabled = true; btn.textContent = 'Gerando…';
-    try {
-      await generateLitterCertificate({
-        male, female, litter, stats, coiResult,
-        kennelName: localStorage.getItem(`kennel_name_${appState.user.uid}`) || 'Meu Canil'
-      });
-    } catch(err) { alert('Erro ao gerar PDF: ' + err.message); }
-    btn.disabled = false; btn.textContent = '📄 Certificado PDF';
-  });
+  document.getElementById('btn-pdf')?.addEventListener('click', () => generatePDF(male, female, appState));
+}
+
+// ─────────────────────────────────────────────────────────────
+// PDF TEMPLATE — Feature 1
+// ─────────────────────────────────────────────────────────────
+function buildPDFTemplate(male, female, entries, total, coiResult, appState) {
+  const kennelName = localStorage.getItem(`kennel_name_${appState.user.uid}`) || 'Meu Canil';
+  const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const colorBars = entries.map(([label, count]) => {
+    const pct = Math.round((count / total) * 100);
+    const col = swatchColor(label);
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:14px;height:14px;border-radius:50%;background:${col};flex-shrink:0;border:2px solid rgba(0,0,0,.1)"></div>
+      <div style="flex:1;font-size:11pt;color:#333">${label}</div>
+      <div style="width:130px;height:10px;background:#e8e0d8;border-radius:5px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${col};opacity:.9"></div>
+      </div>
+      <div style="font-size:11pt;font-weight:700;min-width:34px;text-align:right;color:#1a1a1a">${pct}%</div>
+    </div>`;
+  }).join('');
+
+  const coiSummary = coiResult.hasInbreeding
+    ? `<div style="background:#fff8e1;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:4px;margin-top:14px;font-size:10pt;color:#333">
+        ⚠️ COI estimado: <strong>${coiResult.totalCOI}% (risco ${coiResult.risk})</strong>
+        — Ancestrais comuns: ${coiResult.sharedAncestors.slice(0, 3).join(', ')}
+       </div>`
+    : `<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:10px 14px;border-radius:4px;margin-top:14px;font-size:10pt;color:#333">
+        ✅ Nenhuma consanguinidade detectada nas últimas 4 gerações.
+       </div>`;
+
+  const photoBox = (dog, emoji) =>
+    dog.photoURL
+      ? `<img src="${dog.photoURL}" style="width:110px;height:110px;object-fit:cover;border-radius:8px;display:block;margin:0 auto 8px" crossorigin="anonymous" />`
+      : `<div style="width:110px;height:110px;background:#f5f0e8;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 8px">${emoji}</div>`;
+
+  return `
+    <div id="pdf-content" style="width:794px;background:#fff;color:#1a1a1a;font-family:Georgia,serif;padding:48px 52px;box-sizing:border-box">
+
+      <!-- Cabeçalho -->
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #c8860a;padding-bottom:16px;margin-bottom:24px">
+        <div>
+          <div style="font-size:22pt;font-weight:700;color:#1a0e00;letter-spacing:.5px">${kennelName}</div>
+          <div style="font-size:10pt;color:#666;margin-top:2px">Certificado de Planejamento Genético</div>
+        </div>
+        <div style="text-align:right;font-size:9pt;color:#888">
+          <div>${today}</div>
+          <div style="color:#c8860a;font-weight:600;margin-top:2px">Spitz Lineage Manager</div>
+        </div>
+      </div>
+
+      <!-- Título -->
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:15pt;font-weight:700;color:#c8860a">Planejamento de Ninhada</div>
+        <div style="font-size:12pt;margin-top:4px;color:#333">${male.name} <span style="color:#c8860a">×</span> ${female.name}</div>
+      </div>
+
+      <!-- Pais -->
+      <div style="display:flex;gap:32px;justify-content:center;margin-bottom:24px">
+        <div style="text-align:center">
+          ${photoBox(male, '🐕')}
+          <div style="font-weight:700;font-size:11pt">${male.name}</div>
+          <div style="font-size:9pt;color:#888">♂ Macho · ${male.phenotype?.label || '—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;padding-bottom:30px;font-size:26pt;color:#c8860a">×</div>
+        <div style="text-align:center">
+          ${photoBox(female, '🐩')}
+          <div style="font-weight:700;font-size:11pt">${female.name}</div>
+          <div style="font-size:9pt;color:#888">♀ Fêmea · ${female.phenotype?.label || '—'}</div>
+        </div>
+      </div>
+
+      <!-- Probabilidades -->
+      <div style="background:#fafaf8;border:1px solid #e8e0d4;border-radius:8px;padding:18px 20px;margin-bottom:4px">
+        <div style="font-size:12pt;font-weight:700;margin-bottom:14px;color:#1a0e00;border-bottom:1px solid #e8e0d4;padding-bottom:8px">
+          Probabilidades de Cor — ${total} filhotes simulados
+        </div>
+        ${colorBars}
+      </div>
+
+      ${coiSummary}
+
+      <!-- Rodapé -->
+      <div style="margin-top:32px;border-top:1px solid #e8e0d4;padding-top:14px;display:flex;justify-content:space-between;align-items:flex-end">
+        <div style="font-size:8pt;color:#bbb">Gerado por Spitz Lineage Manager · Uso exclusivo do criador</div>
+        <div style="text-align:right">
+          <div style="border-top:1px solid #999;width:180px;margin-bottom:4px"></div>
+          <div style="font-size:9pt;color:#666">${kennelName}</div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function generatePDF(male, female, appState) {
+  const btn = document.getElementById('btn-pdf');
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando PDF…'; }
+
+  try {
+    const tpl     = document.getElementById('pdf-template');
+    const content = document.getElementById('pdf-content');
+    if (!content) throw new Error('Template PDF não encontrado.');
+
+    const filename = `Certificado_${male.name}_x_${female.name}.pdf`.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+
+    if (typeof html2pdf !== 'undefined') {
+      // html2pdf.js available (loaded via CDN in index.html)
+      tpl.style.position = 'static';
+      tpl.style.left     = '';
+      await html2pdf()
+        .set({
+          margin:      0,
+          filename,
+          image:       { type: 'jpeg', quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, allowTaint: true },
+          jsPDF:       { unit: 'px', format: 'a4', orientation: 'portrait' }
+        })
+        .from(content)
+        .save();
+      tpl.style.position = 'absolute';
+      tpl.style.left     = '-9999px';
+    } else {
+      // Fallback: open in new tab for manual print-to-PDF
+      const win = window.open('', '_blank');
+      if (!win) { alert('Permita pop-ups para gerar o PDF.'); return; }
+      win.document.write(`<!DOCTYPE html><html><head>
+        <meta charset="UTF-8">
+        <style>body{margin:0;padding:0} @media print{body{margin:0}}</style>
+      </head><body>`);
+      win.document.write(content.outerHTML);
+      win.document.write('</body></html>');
+      win.document.close();
+      win.focus();
+      setTimeout(() => { win.print(); }, 600);
+    }
+  } catch(err) {
+    alert('Erro ao gerar PDF: ' + err.message);
+    console.error(err);
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '📄 Certificado PDF'; }
+}
+
+// ─────────────────────────────────────────────────────────────
+// MATCHMAKER — Feature 5
+// ─────────────────────────────────────────────────────────────
+async function runMatchmaker(appState) {
+  const target = document.getElementById('mm-target').value;
+  const btn    = document.getElementById('btn-matchmaker');
+  const res    = document.getElementById('mm-results');
+
+  if (!target) { alert('Selecione a cor desejada.'); return; }
+
+  const myDogs  = appState.dogs.filter(d => d.belongsToMe);
+  const males   = myDogs.filter(d => d.sex === 'M');
+  const females = myDogs.filter(d => d.sex === 'F');
+
+  if (!males.length || !females.length) {
+    res.innerHTML = `<div class="alert alert-warning">Você precisa ter machos e fêmeas no seu canil.</div>`;
+    return;
+  }
+
+  const totalCombos = males.length * females.length;
+  btn.disabled = true; btn.textContent = '🔍 Analisando…';
+  res.innerHTML = `<div class="card" style="margin-top:12px;text-align:center;padding:28px 16px">
+    <div style="font-size:1.6rem;margin-bottom:8px">🔍</div>
+    <div class="text-muted">Testando ${totalCombos} combinação${totalCombos>1?'s':''}…</div>
+  </div>`;
+
+  try {
+    const results = [];
+    for (const male of males) {
+      for (const female of females) {
+        const litter     = simulateLitter(male.genotype || {}, female.genotype || {}, 100);
+        const stats      = litterStats(litter);
+        const matchCount = Object.entries(stats.counts)
+          .filter(([label]) => label.toLowerCase().includes(target))
+          .reduce((s, [, c]) => s + c, 0);
+        const pct = Math.round((matchCount / stats.total) * 100);
+        if (pct > 0) results.push({ male, female, pct, stats });
+      }
+    }
+    results.sort((a, b) => b.pct - a.pct);
+    renderMatchmakerResults(results, target, res);
+  } catch(err) {
+    res.innerHTML = `<div class="alert alert-danger">Erro: ${err.message}</div>`;
+  }
+
+  btn.disabled = false; btn.textContent = '✨ Encontrar Melhor Casal';
+}
+
+function renderMatchmakerResults(results, target, container) {
+  const targetLabel = TARGET_COLORS.find(c => c.value === target)?.label || target;
+  const col         = swatchColor(target);
+  const medalha     = ['🥇', '🥈', '🥉'];
+
+  if (!results.length) {
+    container.innerHTML = `<div class="card" style="margin-top:12px">
+      <div class="text-muted" style="text-align:center;padding:28px 16px">
+        Nenhuma combinação no seu canil produz <strong>${targetLabel}</strong> com probabilidade acima de 0%.<br><br>
+        Considere adicionar cães portadores ao banco de linhagem.
+      </div>
+    </div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="card" style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+        <div style="width:16px;height:16px;border-radius:50%;background:${col};flex-shrink:0;border:2px solid rgba(0,0,0,.15)"></div>
+        <div style="font-family:var(--font-display);font-size:1rem;color:var(--gold)">
+          Melhores casais para produzir ${targetLabel}
+        </div>
+      </div>
+
+      ${results.slice(0, 5).map((r, i) => `
+        <div style="padding:12px;background:var(--surface2);border-radius:8px;margin-bottom:8px;
+          ${i === 0 ? 'border:1px solid rgba(200,134,10,.45);' : ''}">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:1.2rem">${medalha[i] || '🔹'}</span>
+              <div>
+                <div style="font-weight:600;font-size:.94rem">${r.male.name} × ${r.female.name}</div>
+                <div style="font-size:.74rem;color:var(--text-muted)">
+                  ♂ ${r.male.phenotype?.label || '—'} &nbsp;·&nbsp; ♀ ${r.female.phenotype?.label || '—'}
+                </div>
+              </div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-family:var(--font-display);font-size:1.4rem;
+                color:${i === 0 ? 'var(--gold)' : 'var(--text-muted)'}">${r.pct}%</div>
+              <div style="font-size:.7rem;color:var(--text-muted)">de chance</div>
+            </div>
+          </div>
+          ${i === 0 ? `
+            <button class="btn btn-outline btn-sm" style="margin-top:10px;width:100%"
+              id="mm-simulate-best">🧬 Simular este casal</button>` : ''}
+        </div>`
+      ).join('')}
+
+      <p class="text-muted text-sm" style="margin-top:8px;text-align:center">
+        Baseado em simulação de 100 filhotes por combinação
+      </p>
+    </div>`;
+
+  // Wire up "Simular este casal" button
+  if (results.length > 0) {
+    document.getElementById('mm-simulate-best')?.addEventListener('click', () => {
+      const best = results[0];
+      // Switch to manual tab
+      document.querySelector('[data-sim-tab="manual"]')?.click();
+      setTimeout(() => {
+        const maleEl   = document.getElementById('sim-male');
+        const femaleEl = document.getElementById('sim-female');
+        if (maleEl)   maleEl.value   = best.male.id;
+        if (femaleEl) femaleEl.value = best.female.id;
+        // Auto-run simulation
+        document.getElementById('btn-simulate')?.click();
+      }, 120);
+    });
+  }
 }

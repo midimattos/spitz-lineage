@@ -191,6 +191,7 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
 /* ── Badges ───────────────────────────────────────────────── */
 .badge       { padding: 2px 8px; border-radius: 12px; font-size: .72rem; font-weight: 600; }
 .badge-gold  { background: var(--gold-faint); color: var(--gold); border: 1px solid var(--border); }
+.badge-sm    { font-size: .68rem; }
 
 /* ── Page Header ──────────────────────────────────────────── */
 .page-header { margin-bottom: 20px; }
@@ -212,8 +213,8 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
 }
 .dog-card {
   display: flex; flex-direction: column;
-  background-color: #121212;
-  border: 1px solid #333; border-radius: 12px;
+  background-color: var(--surface1);
+  border: 1px solid var(--border); border-radius: 12px;
   overflow: hidden; text-align: center;
   position: relative;
   transition: border-color .18s;
@@ -224,24 +225,24 @@ h2 { font-family: var(--font-display); font-size: 1.25rem; }
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
   font-size: 2.8rem;
-  border-bottom: 2px solid #D4AF37;
+  border-bottom: 2px solid var(--gold);
 }
 .dog-avatar-photo {
   width: 100%; height: 140px;
   background: var(--surface2);
   display: flex; align-items: center; justify-content: center;
   font-size: 2.8rem;
-  border-bottom: 2px solid #D4AF37;
+  border-bottom: 2px solid var(--gold);
 }
 .dog-card-photo {
   width: 100%; height: 140px;
   object-fit: cover;
   border-radius: 0; border: none;
-  border-bottom: 2px solid #D4AF37;
+  border-bottom: 2px solid var(--gold);
 }
 .dog-info   { padding: 8px 10px 4px; }
-.dog-name   { font-weight: 700; font-size: 1.1rem; color: #fff; margin-top: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.dog-breed-tag { font-size: .8rem; color: #AAA; margin-top: 3px; }
+.dog-name   { font-weight: 700; font-size: 1.1rem; color: var(--text); margin-top: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dog-breed-tag { font-size: .8rem; color: var(--text-muted); margin-top: 3px; }
 .dog-sex-badge {
   padding: 2px 7px; border-radius: 12px; font-size: .78rem; font-weight: 700;
 }

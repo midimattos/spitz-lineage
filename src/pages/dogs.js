@@ -86,7 +86,7 @@ function dogCard(dog, isPedigree = false) {
       ${avatar}
       <div class="dog-info">
         <div class="dog-name">${dog.name}</div>
-        <div class="dog-breed-tag">${label}${isPedigree?' · <span class="badge badge-gold" style="font-size:.68rem">Linhagem</span>':''}</div>
+        <div class="dog-breed-tag">${label}${isPedigree?' · <span class="badge badge-gold badge-sm">Linhagem</span>':''}</div>
       </div>
       <div class="dog-actions">
         <span class="dog-sex-badge ${(dog.sex||'m').toLowerCase()}">${dog.sex==='M'?'♂':'♀'}</span>

@@ -86,11 +86,10 @@ function dogCard(dog, isPedigree = false) {
       ${avatar}
       <div class="dog-info">
         <div class="dog-name">${dog.name}</div>
-        <div class="dog-breed-tag">${label}</div>
+        <div class="dog-breed-tag">${label}${isPedigree?' · <span class="badge badge-gold badge-sm">Linhagem</span>':''}</div>
       </div>
-      <span class="dog-sex-badge ${(dog.sex||'m').toLowerCase()}">${dog.sex==='M'?'♂':'♀'}</span>
-      ${isPedigree?'<span class="badge badge-gold" style="font-size:.68rem">Linhagem</span>':''}
       <div class="dog-actions">
+        <span class="dog-sex-badge ${(dog.sex||'m').toLowerCase()}">${dog.sex==='M'?'♂':'♀'}</span>
         <button class="btn btn-ghost btn-sm" data-tree="${dog.id}" title="Ver Árvore">🌳</button>
         <button class="btn btn-ghost btn-sm" data-edit="${dog.id}" title="Editar">✏️</button>
         <button class="btn btn-ghost btn-sm" data-delete="${dog.id}" title="Remover">🗑</button>

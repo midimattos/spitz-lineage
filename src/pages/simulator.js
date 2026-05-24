@@ -2,7 +2,7 @@
 // SIMULATOR PAGE — Ninhada, COI Profundo, PDF Premium, Matchmaker
 // ============================================================
 import { getDog } from '../firebase.js';
-import { simulateLitter, litterStats } from '../utils/genetics.js';
+import { simulateLitter, litterStats, inferGenotype as inferBaseGenotype } from '../utils/genetics.js';
 
 export function renderSimulator(container, appState) {
   const myDogs = appState.dogs.filter(d => d.belongsToMe);
@@ -110,6 +110,60 @@ const TARGET_COLORS = [
   { value:'wolf',      label:'🐺 Wolf Sable' },
 ];
 
+function normalizeColorList(colors = []) {
+  if (!Array.isArray(colors)) return [];
+  return colors.map(c => String(c || '').toLowerCase()).filter(Boolean);
+}
+
+function ensureGenotypeFromDog(dog, producedColors) {
+  const baseInferred = inferBaseGenotype(dog?.phenotype || {}, {}, producedColors);
+  const current = dog?.genotype || {};
+  const merged = {};
+  for (const [locus, pair] of Object.entries(baseInferred)) {
+    const existing = current[locus];
+    merged[locus] = Array.isArray(existing) && existing.length === 2 ? [...existing] : [...pair];
+  }
+  return merged;
+}
+
+function inferGenotype(dog) {
+  const phenotype = dog?.phenotype || {};
+  const baseColor = (phenotype.baseColor || dog?.baseColor || '').toLowerCase();
+  const producedColors = dog?.producedColors || dog?.provenColors || [];
+  const ancestorColors = dog?.ancestorColors || dog?.grandparentsColors || [];
+  const history = [
+    ...normalizeColorList(producedColors),
+    ...normalizeColorList(ancestorColors),
+  ];
+  const hasAnyHistory = (terms) => history.some(c => terms.some(t => c.includes(t)));
+
+  const g = ensureGenotypeFromDog(dog, producedColors);
+  const isVisualChocolate = baseColor.includes('chocolate') || baseColor.includes('lilás') || baseColor.includes('lilas') || baseColor.includes('beaver');
+  const isVisualOrange = baseColor.includes('laranja') || baseColor.includes('sable');
+  const isVisualCreamWhite = baseColor.includes('creme') || baseColor.includes('branco');
+  const isVisualBlack = baseColor.includes('preto');
+  const isVisualTan = baseColor.includes('tan') || baseColor.includes('tricolor');
+  const isSolidBlack = isVisualBlack && !baseColor.includes('tricolor');
+
+  // b locus — infer chocolate carriers from produced colors or ancestors
+  if (!isVisualChocolate && (isVisualBlack || isVisualCreamWhite || isVisualOrange) && hasAnyHistory(['chocolate'])) {
+    g.Locus_B = ['B', 'b'];
+  }
+
+  // at locus — infer hidden tan from produced colors or ancestors
+  if (!isVisualTan && (isSolidBlack || isVisualOrange || isVisualCreamWhite) && hasAnyHistory(['tan points', 'tan', 'fogo'])) {
+    g.Locus_A = ['Ay', 'at'];
+    if (isSolidBlack) g.Locus_K = ['K', 'k'];
+  }
+
+  // e locus — orange carrying recessive cream/white from ancestors/produced history
+  if (isVisualOrange && hasAnyHistory(['creme', 'branco', 'white'])) {
+    g.Locus_E = ['E', 'e'];
+  }
+
+  return g;
+}
+
 // ─────────────────────────────────────────────────────────────
 // MANUAL SIMULATION
 // ─────────────────────────────────────────────────────────────
@@ -127,9 +181,11 @@ async function runSimulation(appState) {
     const male   = appState.dogs.find(d => d.id === maleId);
     const female = appState.dogs.find(d => d.id === femaleId);
     const uid    = appState.user.uid;
+    const maleGenotype = inferGenotype(male);
+    const femaleGenotype = inferGenotype(female);
 
     const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
-    const litter    = simulateLitter(male.genotype || {}, female.genotype || {}, MONTE_CARLO_N);
+    const litter    = simulateLitter(maleGenotype, femaleGenotype, MONTE_CARLO_N);
     const stats     = litterStats(litter);
 
     renderResults(male, female, litter, stats, coiResult, appState);
@@ -509,7 +565,9 @@ async function runMatchmaker(appState) {
     const results = [];
     for (const male of males) {
       for (const female of females) {
-        const litter     = simulateLitter(male.genotype || {}, female.genotype || {}, 100);
+        const maleGenotype = inferGenotype(male);
+        const femaleGenotype = inferGenotype(female);
+        const litter     = simulateLitter(maleGenotype, femaleGenotype, 100);
         const stats      = litterStats(litter);
         const matchCount = Object.entries(stats.counts)
           .filter(([label]) => label.toLowerCase().includes(target))

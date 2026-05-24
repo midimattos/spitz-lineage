@@ -20,6 +20,7 @@ const LOCAL_PRESETS = {
   'Creme':      { baseColor:'Creme/Branco', marking:'Sólido',    nose:'Preta',                  dilution:'densa'   },
   'Wolf Sable': { baseColor:'Wolf Sable',   marking:'Wolf Sable',nose:'Preta',                  dilution:'densa'   },
   'Tricolor':   { baseColor:'Tricolor',     marking:'Tricolor',  nose:'Preta',                  dilution:'densa'   },
+  'Particolor': { baseColor:'Preto',        marking:'Particolor',nose:'Preta',                  dilution:'densa'   },
   'Merle':      { baseColor:'Merle',        marking:'Merle',     nose:'Preta',                  dilution:'densa'   },
 };
 
@@ -28,8 +29,9 @@ const LOCAL_PRESETS = {
 const LOCAL_PROVEN_COLORS = [
   'Preto','Chocolate','Lilás','Beaver',
   'Laranja/Sable','Wolf Sable','Azul/Cinza',
-  'Creme/Branco','Merle','Tricolor','Tan Points',
+  'Creme/Branco','Merle','Tricolor','Particolor','Tan Points',
 ];
+const LOCAL_ANCESTOR_COLORS = [...LOCAL_PROVEN_COLORS];
 
 let fs = resetFormState();
 let wizardStack = []; // { targetField, relativeLabel, savedFs, savedFormSnapshot, savedEditingDogId }
@@ -48,6 +50,7 @@ const RELATIVE_LABELS = {
 function resetFormState() {
   return {
     provenColors: [],
+    ancestorColors: [],
     photoURL: null,
     photoFile: null,
     fatherId: null, fatherName: '', fatherPhenotype: null,
@@ -89,7 +92,8 @@ export async function renderDogForm(container, appState) {
   if (appState.editingDogId) {
     existing = await getDog(appState.user.uid, appState.editingDogId);
     if (existing) {
-      fs.provenColors    = existing.provenColors || [];
+      fs.provenColors    = existing.producedColors || existing.provenColors || [];
+      fs.ancestorColors  = existing.ancestorColors || existing.grandparentsColors || [];
       fs.photoURL        = existing.photoURL || null;
       fs.fatherId        = existing.pedigree?.fatherId || null;
       fs.fatherName      = existing.pedigree?.fatherName || '';
@@ -307,6 +311,15 @@ export async function renderDogForm(container, appState) {
         <div class="divider-label">Linha Materna</div>
         ${ancestorField('Avô Materno','mat-gf','matGrandfather',canNewGrandparent)}
         ${ancestorField('Avó Materna','mat-gm','matGrandmother',canNewGrandparent)}
+        <div class="form-group">
+          <label class="form-label">Cores dos Avós / Ancestrais</label>
+          <p class="text-sm text-muted" style="margin-bottom:8px">Usadas para inferir genes recessivos ocultos.</p>
+          <div class="chips-group" id="ancestor-chips">
+            ${LOCAL_ANCESTOR_COLORS.map(c=>`
+              <button type="button" class="chip ${fs.ancestorColors.includes(c)?'active':''}"
+                data-ancestor="${c}">${c}</button>`).join('')}
+          </div>
+        </div>
       </div>
 
       <!-- ── TAB DNA ── -->
@@ -487,6 +500,20 @@ function initFormHandlers(container, appState) {
     });
   });
 
+  // ── Ancestor colors
+  container.querySelectorAll('[data-ancestor]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const c = chip.dataset.ancestor;
+      if (fs.ancestorColors.includes(c)) {
+        fs.ancestorColors = fs.ancestorColors.filter(x=>x!==c);
+        chip.classList.remove('active');
+      } else {
+        fs.ancestorColors.push(c);
+        chip.classList.add('active');
+      }
+    });
+  });
+
   // ── Father autocomplete
   setupAC('father-input','father-dropdown', uid, async (dog) => {
     fs.fatherId = dog.id; fs.fatherName = dog.name; fs.fatherPhenotype = dog.phenotype;
@@ -607,7 +634,10 @@ function initFormHandlers(container, appState) {
         photoURL,
         phenotype,
         genotype,
+        producedColors: fs.provenColors,
         provenColors: fs.provenColors,
+        ancestorColors: fs.ancestorColors,
+        grandparentsColors: fs.ancestorColors,
         pedigree: {
           fatherId: fs.fatherId||null, fatherName: fs.fatherName||'',
           motherId: fs.motherId||null, motherName: fs.motherName||'',

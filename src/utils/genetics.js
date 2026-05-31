@@ -7,6 +7,8 @@
 //  - genotypeToPhenotype retorna "Lilás" apenas com b/b + d/d
 //  - genotypeToPhenotype retorna "Beaver" com b/b + pelo laranja (sem d/d)
 //  - inferGenotype trata chips "Lilás" e "Beaver" de forma independente
+//  - NOVO: Política determinística rigorosa — ZERO alelos wildcard
+//  - NOVO: Helper centralizado para inferência de evidências
 // ============================================================
 
 export const LOCI = ['A','K','E','B','D','S','M','H','I'];
@@ -21,6 +23,78 @@ const LOCUS_FALLBACK = {
   H: ['h', 'h'],
   I: ['i', 'i'],
 };
+
+// ─────────────────────────────────────────────────────────────
+// HELPER: Centralizado para coleta de evidências
+// ─────────────────────────────────────────────────────────────
+function collectEvidenceForRecessives(pedigree = {}, provenColors = []) {
+  const evidence = {
+    hasChocolateHistory: false,
+    hasTanHistory: false,
+    hasOrangeCreamHistory: false,
+    hasDilueHistory: false,
+    hasMerleHistory: false,
+  };
+
+  // Cores já produzidas
+  const producedColors = Array.isArray(pedigree?.producedColors) ? pedigree.producedColors : [];
+  const normalizedProduced = producedColors
+    .map(c => String(c || '').toLowerCase())
+    .filter(Boolean);
+
+  // Cores comprovadas pelo usuário
+  const normalizedProven = Array.isArray(provenColors)
+    ? provenColors.map(c => String(c || '').toLowerCase()).filter(Boolean)
+    : [];
+
+  const allHistory = [...normalizedProduced, ...normalizedProven];
+
+  // Cores dos ancestrais
+  const ancestorPhenotypes = pedigree?.ancestorPhenotypes || [];
+  const ancestorColors = ancestorPhenotypes
+    .map(p => (p?.baseColor || '').toLowerCase())
+    .filter(Boolean);
+
+  // Fenótipos dos pais
+  const fatherColor = (pedigree?.fatherPhenotype?.baseColor || '').toLowerCase();
+  const motherColor = (pedigree?.motherPhenotype?.baseColor || '').toLowerCase();
+
+  // Verificar prova de Chocolate
+  evidence.hasChocolateHistory = 
+    allHistory.some(c => c.includes('chocolate') || c.includes('beaver'))
+    || ancestorColors.some(c => c.includes('chocolate') || c.includes('beaver'))
+    || fatherColor.includes('chocolate') || fatherColor.includes('beaver')
+    || motherColor.includes('chocolate') || motherColor.includes('beaver')
+    || fatherColor.includes('lilás') || motherColor.includes('lilás');
+
+  // Verificar prova de Tan
+  evidence.hasTanHistory = 
+    allHistory.some(c => c.includes('tan') || c.includes('fogo') || c.includes('points'))
+    || ancestorColors.some(c => c.includes('tan') || c.includes('fogo') || c.includes('points'));
+
+  // Verificar prova de Orange/Cream
+  evidence.hasOrangeCreamHistory = 
+    allHistory.some(c => c.includes('laranja') || c.includes('sable') || c.includes('creme') || c.includes('branco'))
+    || ancestorColors.some(c => c.includes('laranja') || c.includes('sable') || c.includes('creme') || c.includes('branco'))
+    || fatherColor.includes('laranja') || fatherColor.includes('sable') || fatherColor.includes('creme')
+    || motherColor.includes('laranja') || motherColor.includes('sable') || motherColor.includes('creme');
+
+  // Verificar prova de Diluição
+  evidence.hasDilueHistory = 
+    allHistory.some(c => c.includes('azul') || c.includes('cinza') || c.includes('lilás'))
+    || ancestorColors.some(c => c.includes('azul') || c.includes('cinza') || c.includes('lilás'))
+    || fatherColor.includes('azul') || fatherColor.includes('cinza') || fatherColor.includes('lilás')
+    || motherColor.includes('azul') || motherColor.includes('cinza') || motherColor.includes('lilás');
+
+  // Verificar prova de Merle
+  evidence.hasMerleHistory = 
+    allHistory.some(c => c.includes('merle'))
+    || ancestorColors.some(c => c.includes('merle'))
+    || fatherColor.includes('merle')
+    || motherColor.includes('merle');
+
+  return evidence;
+}
 
 // ─────────────────────────────────────────────────────────────
 // GENOTYPE → PHENOTYPE  (o motor de tradução)
@@ -149,10 +223,10 @@ export function genotypeToPhenotype(genotype) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// INFER GENOTYPE — Regra de Ouro em 3 níveis
-//  Nível 1: Fenótipo visual
-//  Nível 2: Pedigree (pais)
-//  Nível 3: Histórico de Cores Produzidas (prioridade máxima)
+// INFER GENOTYPE — Política Determinística Rigorosa
+// Nível 1: Fenótipo visual → determina base + dominantes
+// Nível 2: Pedigree + Histórico → prova de recessivos ocultos
+// Nível 3: ZERO alelos em aberto — Homozigose Dominante se sem prova
 // ─────────────────────────────────────────────────────────────
 export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   const g = {
@@ -167,130 +241,125 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
     Locus_I: ['i','i'],
   };
 
-  const inferredColors = Array.isArray(provenColors) ? [...provenColors] : [];
-  const producedColors = Array.isArray(pedigree?.producedColors) ? pedigree.producedColors : [];
-  if (producedColors.length) inferredColors.push(...producedColors);
-  const normalizedHistory = inferredColors.map(c => String(c || '').toLowerCase()).filter(Boolean);
-
-  const ancestorBases = (pedigree?.ancestorPhenotypes || [])
-    .map(p => (p?.baseColor || '').toLowerCase())
-    .filter(Boolean);
-
   const base = (phenotype?.baseColor || '').toLowerCase();
   const nose = (phenotype?.nose || '').toLowerCase();
 
+  // Coleta centralizada de evidências
+  const evidence = collectEvidenceForRecessives(pedigree, provenColors);
+
   // ────────────────────────────────────────────────────────
-  // NÍVEL 1 — Fenótipo
+  // NÍVEL 1 — Fenótipo visual determina alelos dominantes
   // ────────────────────────────────────────────────────────
   if (base.includes('preto')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['B','B'];
-    g.Locus_D = ['D','D'];
+    // Locus B: determinístico, sem wildcard
+    g.Locus_B = evidence.hasChocolateHistory ? ['B', 'b'] : ['B', 'B'];
+    // Locus D: determinístico
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    // Locus E: determinístico
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   else if (base.includes('chocolate')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['b','b'];
-    g.Locus_D = ['D','D'];
+    g.Locus_B = ['b','b']; // chocolate visual → sempre b/b
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   // ── LILÁS: chocolate + diluído ──────────────────────────
   else if (base.includes('lilás') || base.includes('lilas')) {
     g.Locus_K = ['K','k'];
     g.Locus_B = ['b','b'];   // chocolate obrigatório
     g.Locus_D = ['d','d'];   // diluição obrigatória
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   // ── BEAVER: laranja/biscoito com pigmento marrom ─────────
   else if (base.includes('beaver')) {
     g.Locus_K = ['k','k'];
     g.Locus_A = ['Ay','Ay']; // sable / laranja
     g.Locus_B = ['b','b'];   // b/b → trufa marrom (o que define beaver)
-    g.Locus_D = ['D','D'];   // NÃO exige diluição
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   else if (base.includes('azul') || base.includes('cinza')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['B','B'];
-    g.Locus_D = ['d','d'];
+    g.Locus_B = evidence.hasChocolateHistory ? ['B', 'b'] : ['B', 'B'];
+    g.Locus_D = ['d','d']; // diluição visual obrigatória
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   else if (base.includes('laranja') || base.includes('sable')) {
     g.Locus_K = ['k','k'];
     g.Locus_A = ['Ay','Ay'];
+    g.Locus_B = evidence.hasChocolateHistory ? ['B', 'b'] : ['B', 'B'];
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    g.Locus_E = ['E', 'E']; // laranja visual = E/_ (não pode ser e/e)
   }
   else if (base.includes('wolf')) {
     g.Locus_K = ['k','k'];
     g.Locus_A = ['Aw','Aw'];
+    g.Locus_B = evidence.hasChocolateHistory ? ['B', 'b'] : ['B', 'B'];
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   else if (base.includes('creme') || base.includes('branco')) {
-    g.Locus_E = ['e','e'];
+    g.Locus_E = ['e','e']; // creme/branco visual = e/e sempre
   }
   else if (base.includes('tricolor')) {
     g.Locus_K = ['k','k'];
     g.Locus_A = ['at','at'];
     g.Locus_S = ['sp','sp'];
+    g.Locus_B = evidence.hasChocolateHistory ? ['B', 'b'] : ['B', 'B'];
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   else if (base.includes('tan') || base.includes('fogo')) {
     g.Locus_K = ['k','k'];
     g.Locus_A = ['at','at'];
+    g.Locus_B = evidence.hasChocolateHistory ? ['B', 'b'] : ['B', 'B'];
+    g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
+    g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
   else if (base.includes('merle')) {
     g.Locus_M = ['M','m'];
   }
 
-  // Trufa Lilás → confirma b/b + d/d
+  // ────────────────────────────────────────────────────────
+  // TRUFA — sobrescreve apenas B/D quando explícito
+  // ────────────────────────────────────────────────────────
   if (nose.includes('lilás') || nose.includes('lilas')) {
     g.Locus_B = ['b','b'];
     g.Locus_D = ['d','d'];
-  }
-  // Trufa Marrom/Fígado (Beaver) → confirma b/b mas NÃO força d/d
-  if (nose.includes('marrom') || nose.includes('fígado') || nose.includes('figado')) {
+  } else if (nose.includes('marrom') || nose.includes('fígado') || nose.includes('figado')) {
     g.Locus_B = ['b','b'];
-    // Não altera Locus_D — pode ser densa ou diluída conforme fenótipo
+    // NÃO altera Locus_D — respeita fenótipo
   }
 
   // ────────────────────────────────────────────────────────
-  // NÍVEL 2 — Pedigree (pais)
-  // ────────────────────────────────────────────────────────
-  const fatherBase = (pedigree?.fatherPhenotype?.baseColor || '').toLowerCase();
-  const motherBase = (pedigree?.motherPhenotype?.baseColor || '').toLowerCase();
-  const pedigreeBases = [fatherBase, motherBase, ...ancestorBases].filter(Boolean);
-  const hasHistory = (terms) => normalizedHistory.some(c => terms.some(t => c.includes(t)));
-  const hasPedigree = (terms) => pedigreeBases.some(c => terms.some(t => c.includes(t)));
-
-  // Se qualquer pai é chocolate/lilás/beaver → cão é portador B/b
-  const parentHasB = [fatherBase, motherBase].some(b =>
-    b.includes('chocolate') || b.includes('lilás') || b.includes('lilas') || b.includes('beaver')
-  );
-  if (g.Locus_B[0] === 'B') {
-    const provedB = parentHasB || hasHistory(['chocolate', 'beaver']);
-    g.Locus_B = provedB ? ['B', 'b'] : ['B', 'B'];
-  }
-
-  // Se qualquer pai é azul/lilás → cão é portador D/d
-  const parentHasD = [fatherBase, motherBase].some(b =>
-    b.includes('azul') || b.includes('cinza') || b.includes('lilás') || b.includes('lilas')
-  );
-  const isDense = base.includes('preto') || base.includes('chocolate') || base.includes('laranja') || base.includes('sable');
-  if (g.Locus_D[0] === 'D' && isDense) {
-    const provedD = parentHasD || hasHistory(['azul', 'cinza', 'lilás', 'lilas']);
-    g.Locus_D = provedD ? ['D', 'd'] : ['D', 'D'];
-  }
-
-  const isDarkBase = base.includes('preto') || base.includes('chocolate') || base.includes('azul') || base.includes('lilás') || base.includes('lilas');
-  const parentHasOrangeCream = [fatherBase, motherBase].some(b =>
-    b.includes('laranja') || b.includes('sable') || b.includes('creme') || b.includes('branco')
-  );
-  if (g.Locus_E[0] === 'E' && isDarkBase) {
-    const provedE = parentHasOrangeCream || hasHistory(['laranja', 'sable', 'creme', 'branco']);
-    g.Locus_E = provedE ? ['E', 'e'] : ['E', 'E'];
-  }
-
-  // ────────────────────────────────────────────────────────
-  // NÍVEL 3 — Histórico de Cores Produzidas (prioridade máxima)
+  // LOCUS M — Política Rigorosa Determinística
   // ────────────────────────────────────────────────────────
   const isVisualMerle =
     base.includes('merle')
     || (phenotype?.marking || '').toLowerCase().includes('merle')
     || (phenotype?.merleType || '').toLowerCase().includes('merle');
-  const hasMerleProof = hasHistory(['merle']) || hasPedigree(['merle']);
-  g.Locus_M = (isVisualMerle || hasMerleProof) ? ['M', 'm'] : ['m', 'm'];
+
+  if (isVisualMerle) {
+    g.Locus_M = ['M', 'm'];
+  } else if (evidence.hasMerleHistory) {
+    g.Locus_M = ['M', 'm'];
+  } else {
+    // SEM merle visual e SEM prova = homozigose recessivo (ZERO wildcard)
+    g.Locus_M = ['m', 'm'];
+  }
+
+  // ────────────────────────────────────────────────────────
+  // GARANTIA FINAL: Nenhum locus pode ter wildcard ou null
+  // ────────────────────────────────────────────────────────
+  for (const locus of LOCI) {
+    const key = `Locus_${locus}`;
+    const pair = g[key];
+    if (!Array.isArray(pair) || pair.length !== 2 || pair.some(a => !a || a === '?' || a === null || a === undefined)) {
+      g[key] = LOCUS_FALLBACK[locus];
+    }
+  }
 
   return g;
 }

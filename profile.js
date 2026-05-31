@@ -1,128 +1,128 @@
 // ============================================================
-// FIREBASE SERVICE — Spitz Lineage Manager
-// Auth + Firestore: Firebase (plano gratuito Spark)
-// Fotos:           Cloudinary (gratuito, substitui Firebase Storage)
+// PDF UTILITY — Spitz Lineage Manager
+// Exporta generateLitterCertificate (chamado pelo simulator.js)
 // ============================================================
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
-  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs,
-  addDoc, updateDoc, deleteDoc, serverTimestamp }
-  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 
-// ── Config Firebase ───────────────────────────────────────────
-const cfg = window.__ENV__ || {};
-const firebaseConfig = {
-  apiKey:            cfg.FIREBASE_API_KEY            || '',
-  authDomain:        cfg.FIREBASE_AUTH_DOMAIN        || '',
-  projectId:         cfg.FIREBASE_PROJECT_ID         || '',
-  storageBucket:     cfg.FIREBASE_STORAGE_BUCKET     || '',
-  messagingSenderId: cfg.FIREBASE_MESSAGING_SENDER_ID|| '',
-  appId:             cfg.FIREBASE_APP_ID             || ''
-};
+export async function generateLitterCertificate({ male, female, litter, stats, coiResult, kennelName }) {
+  // This function is kept for backwards compatibility.
+  // The main PDF generation logic now lives inside simulator.js (generatePDF).
+  // You can use this as a standalone entry point if needed.
+  const entries = Object.entries(stats.counts).sort((a,b) => b[1]-a[1]);
+  const total   = stats.total;
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db   = getFirestore(app);
+  const SWATCH = {
+    preto:'#1a1a1a', chocolate:'#5c3317', beaver:'#8a6040', 'lilás':'#907090',
+    azul:'#5a80a8', laranja:'#c06818', sable:'#b87030', creme:'#e8d8a8',
+    branco:'#f0ece0', merle:'#6888a8', wolf:'#787858', tricolor:'#1a1a1a'
+  };
+  const swatchColor = (label) => {
+    const l = (label||'').toLowerCase();
+    for (const [k,v] of Object.entries(SWATCH)) { if (l.includes(k)) return v; }
+    return '#888';
+  };
 
-// ── Auth ──────────────────────────────────────────────────────
-export const login  = (email, pw) => signInWithEmailAndPassword(auth, email, pw);
-export const logout = ()          => signOut(auth);
-export const onAuth = (cb)        => onAuthStateChanged(auth, cb);
+  const today = new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'long', year:'numeric' });
 
-// ── Photo Upload via Cloudinary ───────────────────────────────
-// Firebase Storage exige plano pago — Cloudinary é gratuito (25 GB)
-// Configuração: veja INSTRUCOES_DEPLOY.md → Passo Cloudinary
-const CLOUDINARY_CLOUD_NAME    = cfg.CLOUDINARY_CLOUD_NAME    || '';
-const CLOUDINARY_UPLOAD_PRESET = cfg.CLOUDINARY_UPLOAD_PRESET || '';
+  const colorBars = entries.map(([label, count]) => {
+    const pct = Math.round((count/total)*100);
+    const col = swatchColor(label);
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <div style="width:14px;height:14px;border-radius:50%;background:${col};flex-shrink:0;border:2px solid rgba(0,0,0,.1)"></div>
+      <div style="flex:1;font-size:11pt;color:#333">${label}</div>
+      <div style="width:130px;height:10px;background:#e8e0d8;border-radius:5px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${col}"></div>
+      </div>
+      <div style="font-size:11pt;font-weight:700;min-width:34px;text-align:right">${pct}%</div>
+    </div>`;
+  }).join('');
 
-export async function uploadDogPhoto(uid, file, dogId) {
-  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-    throw new Error(
-      'Cloudinary não configurado.\n' +
-      'Adicione CLOUDINARY_CLOUD_NAME e CLOUDINARY_UPLOAD_PRESET no window.__ENV__ do index.html.\n' +
-      'Consulte INSTRUCOES_DEPLOY.md para o passo a passo.'
-    );
+  const coiSummary = coiResult.hasInbreeding
+    ? `<div style="background:#fff8e1;border-left:4px solid #f59e0b;padding:10px 14px;border-radius:4px;margin-top:14px;font-size:10pt">
+        ⚠️ COI: <strong>${coiResult.riskPercent || coiResult.totalCOI}% (risco ${coiResult.risk||'moderado'})</strong>
+        — Ancestrais: ${(coiResult.sharedAncestors||[]).slice(0,3).join(', ')}
+       </div>`
+    : `<div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:10pt 14px;border-radius:4px;margin-top:14px;font-size:10pt">
+        ✅ Nenhuma consanguinidade detectada nas últimas 4 gerações.
+       </div>`;
+
+  const photoBox = (dog, emoji) =>
+    dog.photoURL
+      ? `<img src="${dog.photoURL}" style="width:110px;height:110px;object-fit:cover;border-radius:8px;display:block;margin:0 auto 8px" crossorigin="anonymous" />`
+      : `<div style="width:110px;height:110px;background:#f5f0e8;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:3rem;margin:0 auto 8px">${emoji}</div>`;
+
+  const html = `
+    <div id="pdf-content-standalone" style="width:794px;background:#fff;color:#1a1a1a;font-family:Georgia,serif;padding:48px 52px;box-sizing:border-box">
+      <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #c8860a;padding-bottom:16px;margin-bottom:24px">
+        <div>
+          <div style="font-size:22pt;font-weight:700;color:#1a0e00">${kennelName}</div>
+          <div style="font-size:10pt;color:#666;margin-top:2px">Certificado de Planejamento Genético</div>
+        </div>
+        <div style="text-align:right;font-size:9pt;color:#888">
+          <div>${today}</div>
+          <div style="color:#c8860a;font-weight:600;margin-top:2px">Spitz Lineage Manager</div>
+        </div>
+      </div>
+      <div style="text-align:center;margin-bottom:24px">
+        <div style="font-size:15pt;font-weight:700;color:#c8860a">Planejamento de Ninhada</div>
+        <div style="font-size:12pt;margin-top:4px;color:#333">${male.name} × ${female.name}</div>
+      </div>
+      <div style="display:flex;gap:32px;justify-content:center;margin-bottom:24px">
+        <div style="text-align:center">${photoBox(male,'🐕')}
+          <div style="font-weight:700;font-size:11pt">${male.name}</div>
+          <div style="font-size:9pt;color:#888">♂ ${male.phenotype?.label||'—'}</div>
+        </div>
+        <div style="display:flex;align-items:center;padding-bottom:30px;font-size:26pt;color:#c8860a">×</div>
+        <div style="text-align:center">${photoBox(female,'🐩')}
+          <div style="font-weight:700;font-size:11pt">${female.name}</div>
+          <div style="font-size:9pt;color:#888">♀ ${female.phenotype?.label||'—'}</div>
+        </div>
+      </div>
+      <div style="background:#fafaf8;border:1px solid #e8e0d4;border-radius:8px;padding:18px 20px">
+        <div style="font-size:12pt;font-weight:700;margin-bottom:14px;color:#1a0e00;border-bottom:1px solid #e8e0d4;padding-bottom:8px">
+          Probabilidades — ${total} filhotes simulados
+        </div>
+        ${colorBars}
+      </div>
+      ${coiSummary}
+      <div style="margin-top:32px;border-top:1px solid #e8e0d4;padding-top:14px;display:flex;justify-content:space-between;align-items:flex-end">
+        <div style="font-size:8pt;color:#bbb">Gerado por Spitz Lineage Manager</div>
+        <div style="text-align:right">
+          <div style="border-top:1px solid #999;width:180px;margin-bottom:4px"></div>
+          <div style="font-size:9pt;color:#666">${kennelName}</div>
+        </div>
+      </div>
+    </div>`;
+
+  const container = document.createElement('div');
+  container.style.cssText = 'position:absolute;left:-9999px;top:0;width:794px';
+  container.innerHTML = html;
+  document.body.appendChild(container);
+
+  const filename = `Certificado_${male.name}_x_${female.name}.pdf`.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+
+  try {
+    if (typeof html2pdf !== 'undefined') {
+      await html2pdf()
+        .set({
+          margin: 0, filename,
+          image:       { type:'jpeg', quality:.95 },
+          html2canvas: { scale:2, useCORS:true, allowTaint:true },
+          jsPDF:       { unit:'px', format:'a4', orientation:'portrait' }
+        })
+        .from(container.firstChild)
+        .save();
+    } else {
+      const win = window.open('', '_blank');
+      if (!win) { alert('Permita pop-ups para gerar o PDF.'); return; }
+      win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <style>body{margin:0}@media print{body{margin:0}}</style>
+        </head><body>`);
+      win.document.write(html);
+      win.document.write('</body></html>');
+      win.document.close();
+      setTimeout(() => win.print(), 500);
+    }
+  } finally {
+    document.body.removeChild(container);
   }
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder',     `spitz/${uid}`);
-  formData.append('public_id',  `dog_${dogId}`);
-
-  const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-    { method: 'POST', body: formData }
-  );
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error('Erro no upload: ' + (err.error?.message || res.statusText));
-  }
-
-  const data = await res.json();
-  // URL com redimensionamento automático 400×400, qualidade e formato otimizados
-  return data.secure_url.replace(
-    '/upload/',
-    '/upload/w_400,h_400,c_fill,q_auto,f_auto/'
-  );
-}
-
-// ── Dogs CRUD ─────────────────────────────────────────────────
-const dogsCol = (uid) => collection(db, 'users', uid, 'dogs');
-
-export async function getAllDogs(uid) {
-  const snap = await getDocs(dogsCol(uid));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-
-export async function getDog(uid, dogId) {
-  if (!dogId) return null;
-  const snap = await getDoc(doc(db, 'users', uid, 'dogs', dogId));
-  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
-}
-
-export async function saveDog(uid, data, existingId = null) {
-  if (existingId) {
-    await updateDoc(doc(db, 'users', uid, 'dogs', existingId), { ...data, updatedAt: serverTimestamp() });
-    return existingId;
-  }
-  const ref = await addDoc(dogsCol(uid), { ...data, createdAt: serverTimestamp() });
-  return ref.id;
-}
-
-export async function deleteDog(uid, dogId) {
-  await deleteDoc(doc(db, 'users', uid, 'dogs', dogId));
-}
-
-export async function searchDogsByName(uid, fragment) {
-  const all = await getAllDogs(uid);
-  const q = fragment.toLowerCase();
-  return all.filter(d => d.name?.toLowerCase().includes(q));
-}
-
-// ── Recursive pedigree fetch ──────────────────────────────────
-export async function fetchAncestors(uid, dogId, depth = 3) {
-  if (!dogId || depth === 0) return null;
-  const dog = await getDog(uid, dogId);
-  if (!dog) return null;
-  const [father, mother] = await Promise.all([
-    fetchAncestors(uid, dog.pedigree?.fatherId, depth - 1),
-    fetchAncestors(uid, dog.pedigree?.motherId, depth - 1)
-  ]);
-  return { ...dog, father, mother };
-}
-
-// ── Collect ancestor IDs for COI ─────────────────────────────
-export async function collectAncestorIds(uid, dogId, depth = 5, visited = new Set()) {
-  if (!dogId || depth === 0 || visited.has(dogId)) return visited;
-  visited.add(dogId);
-  const dog = await getDog(uid, dogId);
-  if (!dog) return visited;
-  await Promise.all([
-    collectAncestorIds(uid, dog.pedigree?.fatherId, depth - 1, visited),
-    collectAncestorIds(uid, dog.pedigree?.motherId, depth - 1, visited)
-  ]);
-  return visited;
 }

@@ -294,6 +294,22 @@ async function runSimulation(appState) {
     const litter    = simulateLitter(maleGenotype, femaleGenotype, MONTE_CARLO_N);
     const stats     = litterStats(litter);
 
+    // =========================================================================
+    // 🔥 TRATAMENTO DE CHOQUE: INTERCEPTADOR DE ALERTAS FALSOS DE MERLE
+    // =========================================================================
+    // Se AMBOS os pais foram inferidos como 'm/m' (Sem Merle), é BIOLOGICAMENTE 
+    // IMPOSSÍVEL ter Merle ou Double Merle. Limpamos qualquer string mentirosa.
+    const paiTemM = maleGenotype.Locus_M && maleGenotype.Locus_M.includes('M');
+    const maeTemM = femaleGenotype.Locus_M && femaleGenotype.Locus_M.includes('M');
+
+    if (!paiTemM && !maeTemM) {
+      if (stats && Array.isArray(stats.alerts)) {
+        // Remove qualquer aviso que cite a palavra "merle"
+        stats.alerts = stats.alerts.filter(alerta => !alerta.toLowerCase().includes('merle'));
+      }
+    }
+    // =========================================================================
+
     renderResults(male, female, litter, stats, coiResult, appState);
   } catch(err) {
     alert('Erro na simulação: ' + err.message);

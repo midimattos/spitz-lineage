@@ -1,0 +1,11 @@
+{
+  "name": "spitz-lineage-manager",
+  "version": "2.0.0",
+  "description": "SaaS de Gestão Genética para Criadores de Spitz Alemão Anão",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve . -p 3000",
+    "build": "echo 'No build step needed — pure ESM with CDN imports'",
+    "deploy": "npx vercel --prod"
+  }
+}

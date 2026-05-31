@@ -9,6 +9,7 @@
 //  - inferGenotype trata chips "Lilás" e "Beaver" de forma independente
 //  - NOVO: Política determinística rigorosa — ZERO alelos wildcard
 //  - NOVO: Helper centralizado para inferência de evidências
+//  - NOVO: Trava biológica absoluta contra Double Merle em simulateLitter
 // ============================================================
 
 export const LOCI = ['A','K','E','B','D','S','M','H','I'];
@@ -24,7 +25,7 @@ const LOCUS_FALLBACK = {
   I: ['i', 'i'],
 };
 
-// ─────────────────────────────────────────────────────────────
+// ──────────��──────────────────────────────────────────────────
 // HELPER: Centralizado para coleta de evidências
 // ─────────────────────────────────────────────────────────────
 function collectEvidenceForRecessives(pedigree = {}, provenColors = []) {
@@ -144,8 +145,11 @@ export function genotypeToPhenotype(genotype) {
   }
   const topS = dominantS(locusS);
 
-  // ── Locus M — Merle ──────────────────────────────────────
-  const merleCount = get('M').filter(a => a === 'M').length;
+  // ── Locus M — Merle (com trava rigorosa)──────────────────────────────────
+  const locusM = get('M');
+  const merleCount = locusM.filter(a => a === 'M').length;
+  
+  // TRAVA BIOLÓGICA ABSOLUTA: Double Merle só se ambos alelos forem 'M'
   if (merleCount === 2) {
     result.doubleMerle = true;
     result.alerts.push('⚠️ Double Merle detectado! Risco elevado de surdez e cegueira.');
@@ -204,7 +208,7 @@ export function genotypeToPhenotype(genotype) {
     }
   }
 
-  // ── Merle sobrepõe ───────────────────────────────────────
+  // ── Merle sobrepõe (somente se isMerle = true, i.e. merleCount >= 1) ───────────────────────────────────
   let marking = '';
   if (isMerle && baseColor !== 'Creme/Branco') {
     marking = 'Merle';
@@ -365,9 +369,13 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// SIMULADOR DE NINHADA — Quadrado de Punnett
+// SIMULADOR DE NINHADA — Quadrado de Punnett com Trava Biológica
 // ─────────────────────────────────────────────────────────────
 export function simulateLitter(maleGenotype, femaleGenotype, size = 20) {
+  // TRAVA BIOLÓGICA ABSOLUTA: Verificar presença do alelo M em pais
+  const paiTemM = (maleGenotype?.Locus_M || []).includes('M');
+  const maeTemM = (femaleGenotype?.Locus_M || []).includes('M');
+
   const sanitizePair = (pair, locus) => {
     const fallback = LOCUS_FALLBACK[locus] || ['A', 'A'];
     const source = Array.isArray(pair) && pair.length === 2 ? pair : fallback;
@@ -384,13 +392,24 @@ export function simulateLitter(maleGenotype, femaleGenotype, size = 20) {
       const key   = `Locus_${locus}`;
       const male  = sanitizePair(maleGenotype[key], locus);
       const fem   = sanitizePair(femaleGenotype[key], locus);
-      const combo = [
-        [male[0], fem[0]],
-        [male[0], fem[1]],
-        [male[1], fem[0]],
-        [male[1], fem[1]],
-      ];
-      pupGenotype[key] = combo[Math.floor(Math.random() * 4)];
+      
+      // ─────────────────────────────────────────────────────
+      // BLOQUEIO DE DOUBLE MERLE FANTASMA
+      // Se nenhum dos pais tem M, filhote NUNCA pode ser Merle
+      // ─────────────────────────────────────────────────────
+      if (locus === 'M' && !paiTemM && !maeTemM) {
+        // Força Locus M do filhote para ['m', 'm']
+        pupGenotype[key] = ['m', 'm'];
+      } else {
+        // Para outros loci (ou M se pelo menos um pai tem), usa Punnett normal
+        const combo = [
+          [male[0], fem[0]],
+          [male[0], fem[1]],
+          [male[1], fem[0]],
+          [male[1], fem[1]],
+        ];
+        pupGenotype[key] = combo[Math.floor(Math.random() * 4)];
+      }
     }
     const phenotype = genotypeToPhenotype(pupGenotype);
     litter.push({ genotype: pupGenotype, phenotype });

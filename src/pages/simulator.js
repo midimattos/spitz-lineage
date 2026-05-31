@@ -175,10 +175,12 @@ async function runSimulation(appState) {
     const femaleGenotype = inferDogGenotypeForSimulation(female, dogsById);
 
     const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
-    console.debug('[Simulator] inferGenotype', {
-      male: { name: male?.name, locusB: maleGenotype?.Locus_B, carriesChocolate: carriesChocolate(maleGenotype), provenColors: male?.provenColors || male?.producedColors || [] },
-      female: { name: female?.name, locusB: femaleGenotype?.Locus_B, carriesChocolate: carriesChocolate(femaleGenotype), provenColors: female?.provenColors || female?.producedColors || [] }
-    });
+    if (localStorage.getItem('debugGenetics') === '1') {
+      console.debug('[Simulator] inferGenotype', {
+        male: { name: male?.name, locusB: maleGenotype?.Locus_B, carriesChocolate: carriesChocolate(maleGenotype), provenColors: male?.provenColors || male?.producedColors || [] },
+        female: { name: female?.name, locusB: femaleGenotype?.Locus_B, carriesChocolate: carriesChocolate(femaleGenotype), provenColors: female?.provenColors || female?.producedColors || [] }
+      });
+    }
     const litter    = simulateLitter(maleGenotype, femaleGenotype, MONTE_CARLO_N);
     const stats     = litterStats(litter);
 

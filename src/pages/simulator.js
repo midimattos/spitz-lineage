@@ -139,6 +139,16 @@ function isConcreteAllele(allele) {
   return allele !== '?' && allele !== null && allele !== undefined && allele !== '';
 }
 
+// Verifica merle POSITIVO — exclui 'nao_merle' que contém a substring 'merle'
+// mas significa ausência de merle.
+function isMerlePositive(str) {
+  const s = (str || '').toLowerCase().trim();
+  if (!s.includes('merle')) return false;
+  if (s.startsWith('nao') || s.startsWith('não') || s.startsWith('sem ') || s.startsWith('no ')) return false;
+  if (s === 'nao_merle' || s === 'não_merle' || s === 'nao merle' || s === 'não merle') return false;
+  return true;
+}
+
 function inferGenotype(dog) {
   const phenotype = dog?.phenotype || {};
   const baseColor = (phenotype.baseColor || dog?.baseColor || '').toLowerCase();
@@ -184,7 +194,7 @@ function inferGenotype(dog) {
   const isSolidBlack = (isVisualBlack || isVisualBlue) && !baseColor.includes('tricolor');
   const dogMarking = String(dog?.marking || dog?.phenotype?.marking || '').toLowerCase();
   const dogMerleType = String(dog?.merleType || dog?.phenotype?.merleType || '').toLowerCase();
-  const isVisualMerle = dogMarking.includes('merle') || dogMerleType.includes('merle');
+  const isVisualMerle = isMerlePositive(dogMarking) || isMerlePositive(dogMerleType);
 
   // b locus — strict deterministic inference
   if (isVisualChocolate || isVisualLilac) {
@@ -238,7 +248,7 @@ function inferGenotype(dog) {
   }
 
   // M locus — lock to m/m when non-merle with no explicit evidence
-  if (isVisualMerle || hasAnyHistory(allHistory, ['merle'])) {
+  if (isVisualMerle || allHistory.some(c => isMerlePositive(c))) {
     g.Locus_M = ['M', 'm'];
   } else {
     g.Locus_M = ['m', 'm'];
@@ -402,7 +412,7 @@ function noseColor(pheno) {
 /** Returns a human-readable merle status */
 function merleStatus(pheno) {
   if (pheno.doubleMerle) return 'Double Merle (M/M)';
-  if ((pheno.marking || '').toLowerCase().includes('merle')) return 'Merle (M/m)';
+  if (isMerlePositive(pheno.marking || '')) return 'Merle (M/m)';
   return 'Sem Merle';
 }
 

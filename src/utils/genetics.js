@@ -25,7 +25,21 @@ const LOCUS_FALLBACK = {
   I: ['i', 'i'],
 };
 
-// ──────────��──────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// HELPER: verifica se uma string representa merle POSITIVO.
+// Exclui 'nao_merle' / 'não merle' que contêm a substring
+// 'merle' mas significam ausência — o bug clássico de substring.
+// ─────────────────────────────────────────────────────────────
+function isMerlePositive(str) {
+  const s = (str || '').toLowerCase().trim();
+  if (!s.includes('merle')) return false;
+  // prefixos de negação
+  if (s.startsWith('nao') || s.startsWith('não') || s.startsWith('sem ') || s.startsWith('no ')) return false;
+  if (s === 'nao_merle' || s === 'não_merle' || s === 'nao merle' || s === 'não merle') return false;
+  return true;
+}
+
+// ──────────────────────────────────────────────────────────────
 // HELPER: Centralizado para coleta de evidências
 // ─────────────────────────────────────────────────────────────
 function collectEvidenceForRecessives(pedigree = {}, provenColors = []) {
@@ -89,10 +103,10 @@ function collectEvidenceForRecessives(pedigree = {}, provenColors = []) {
 
   // Verificar prova de Merle
   evidence.hasMerleHistory = 
-    allHistory.some(c => c.includes('merle'))
-    || ancestorColors.some(c => c.includes('merle'))
-    || fatherColor.includes('merle')
-    || motherColor.includes('merle');
+    allHistory.some(c => isMerlePositive(c))
+    || ancestorColors.some(c => isMerlePositive(c))
+    || isMerlePositive(fatherColor)
+    || isMerlePositive(motherColor);
 
   return evidence;
 }
@@ -327,7 +341,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
     g.Locus_D = evidence.hasDilueHistory ? ['D', 'd'] : ['D', 'D'];
     g.Locus_E = evidence.hasOrangeCreamHistory ? ['E', 'e'] : ['E', 'E'];
   }
-  else if (base.includes('merle')) {
+  else if (isMerlePositive(base)) {
     g.Locus_M = ['M','m'];
   }
 
@@ -346,9 +360,9 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   // LOCUS M — Política Rigorosa Determinística
   // ────────────────────────────────────────────────────────
   const isVisualMerle =
-    base.includes('merle')
-    || (phenotype?.marking || '').toLowerCase().includes('merle')
-    || (phenotype?.merleType || '').toLowerCase().includes('merle');
+    isMerlePositive(base)
+    || isMerlePositive(phenotype?.marking || '')
+    || isMerlePositive(phenotype?.merleType || '');
 
   if (isVisualMerle) {
     g.Locus_M = ['M', 'm'];

@@ -200,11 +200,14 @@ function inferGenotype(dog) {
   const isVisualDark = isVisualBlack || isVisualChocolate || isVisualBlue || isVisualLilac;
   const isVisualDense = isVisualBlack || isVisualChocolate || isVisualOrange;
   const isSolidBlack = (isVisualBlack || isVisualBlue) && !baseColor.includes('tricolor');
+  const dogMarking = String(dog?.marking || dog?.phenotype?.marking || '').toLowerCase();
+  const dogMerleType = String(dog?.merleType || dog?.phenotype?.merleType || '').toLowerCase();
+  const isVisualMerle = dogMarking.includes('merle') || dogMerleType.includes('merle');
 
   // b locus — strict deterministic inference
   if (isVisualChocolate || isVisualLilac) {
     g.Locus_B = ['b', 'b'];
-  } else if (isSolidBlack) {
+  } else if (isVisualBlack || isVisualBlue) {
     const hasChocolateProof =
       hasAnyHistory(producedHistory, ['chocolate', 'beaver']) ||
       hasAnyHistory(parentHistory, ['chocolate', 'beaver']);
@@ -218,10 +221,11 @@ function inferGenotype(dog) {
   }
 
   // e locus — strict deterministic inference
-  if (isVisualDark && (hasAnyHistory(producedHistory, ['laranja', 'orange', 'sable', 'creme', 'cream', 'branco', 'white']) || hasAnyHistory(parentHistory, ['laranja', 'orange', 'sable', 'creme', 'cream', 'branco', 'white']))) {
-    g.Locus_E = ['E', 'e'];
-  } else if (isVisualDark && !isVisualOrange && !isVisualCreamWhite) {
-    g.Locus_E = ['E', 'E'];
+  if (isVisualDark) {
+    const hasRecessiveEProof =
+      hasAnyHistory(producedHistory, ['laranja', 'orange', 'creme', 'cream', 'branco', 'white']) ||
+      hasAnyHistory(parentHistory, ['laranja', 'orange', 'creme', 'cream', 'branco', 'white']);
+    g.Locus_E = hasRecessiveEProof ? ['E', 'e'] : ['E', 'E'];
   }
 
   // d locus — strict deterministic inference
@@ -229,7 +233,7 @@ function inferGenotype(dog) {
     g.Locus_D = ['d', 'd'];
   } else if (isVisualDense) {
     const hasDiluteProof =
-      hasAnyHistory(producedHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac']) ||
+      hasAnyHistory(producedHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac', 'creme', 'cream']) ||
       hasAnyHistory(parentHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac', 'creme', 'cream']);
     g.Locus_D = hasDiluteProof ? ['D', 'd'] : ['D', 'D'];
   }
@@ -252,30 +256,25 @@ function inferGenotype(dog) {
   }
 
   // M locus — lock to m/m when non-merle with no explicit evidence
-  const isMerle = (dog?.phenotype?.marking || '').toLowerCase().includes('merle') || 
-                  (dog?.phenotype?.merleType || '').toLowerCase().includes('merle');
-  if (isMerle || hasAnyHistory(allHistory, ['merle'])) {
+  if (isVisualMerle || hasAnyHistory(allHistory, ['merle'])) {
     g.Locus_M = ['M', 'm'];
   } else {
     g.Locus_M = ['m', 'm'];
   }
 
-  const fallbackByLocus = {
-    Locus_A: ['Ay', 'Ay'],
-    Locus_K: ['k', 'k'],
-    Locus_E: ['E', 'E'],
-    Locus_B: ['B', 'B'],
-    Locus_D: ['D', 'D'],
-    Locus_S: ['S', 'S'],
-    Locus_M: ['m', 'm'],
-    Locus_H: ['h', 'h'],
-    Locus_I: ['i', 'i'],
+  const genotipoFinal = {
+    Locus_A: g.Locus_A || ['Ay', 'Ay'],
+    Locus_K: g.Locus_K || ['k', 'k'],
+    Locus_E: g.Locus_E || ['E', 'E'],
+    Locus_B: g.Locus_B || ['B', 'B'],
+    Locus_D: g.Locus_D || ['D', 'D'],
+    Locus_S: g.Locus_S || ['S', 'S'],
+    Locus_M: g.Locus_M || ['m', 'm'],
   };
 
   return Object.fromEntries(
-    Object.entries(fallbackByLocus).map(([locus, fallback]) => {
-      const pair = Array.isArray(g[locus]) ? g[locus] : fallback;
-      const first = isConcreteAllele(pair[0]) ? pair[0] : fallback[0];
+    Object.entries(genotipoFinal).map(([locus, pair]) => {
+      const first = isConcreteAllele(pair[0]) ? pair[0] : (locus === 'Locus_M' ? 'm' : 'B');
       const second = isConcreteAllele(pair[1]) ? pair[1] : first;
       return [locus, [first, second]];
     })

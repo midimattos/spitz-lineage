@@ -2,7 +2,7 @@
 // SIMULATOR PAGE — Ninhada, COI Profundo, PDF Premium, Matchmaker
 // ============================================================
 import { getDog } from '../firebase.js';
-import { simulateLitter, litterStats } from '../utils/genetics.js';
+import { simulateLitter, litterStats, inferGenotype } from '../utils/genetics.js';
 
 export function renderSimulator(container, appState) {
   const myDogs = appState.dogs.filter(d => d.belongsToMe);
@@ -110,6 +110,49 @@ const TARGET_COLORS = [
   { value:'wolf',      label:'🐺 Wolf Sable' },
 ];
 
+function collectAncestorPhenotypes(dog, dogsById) {
+  const anc = dog?.ancestors || {};
+  const ancIds = [
+    dog?.pedigree?.fatherId,
+    dog?.pedigree?.motherId,
+    dog?.pedigree?.patGrandfatherId,
+    dog?.pedigree?.patGrandmotherId,
+    dog?.pedigree?.matGrandfatherId,
+    dog?.pedigree?.matGrandmotherId,
+    anc?.paternal?.grandfather?.id,
+    anc?.paternal?.grandmother?.id,
+    anc?.maternal?.grandfather?.id,
+    anc?.maternal?.grandmother?.id,
+  ].filter(Boolean);
+
+  return [...new Set(ancIds)]
+    .map(id => dogsById[id]?.phenotype)
+    .filter(Boolean);
+}
+
+function inferDogGenotypeForSimulation(dog, dogsById) {
+  const father = dogsById[dog?.pedigree?.fatherId];
+  const mother = dogsById[dog?.pedigree?.motherId];
+  const provenColors = dog?.provenColors || dog?.producedColors || [];
+
+  const inferred = inferGenotype(
+    dog?.phenotype || {},
+    {
+      fatherPhenotype: father?.phenotype || null,
+      motherPhenotype: mother?.phenotype || null,
+      ancestorPhenotypes: collectAncestorPhenotypes(dog, dogsById),
+      producedColors: dog?.producedColors || []
+    },
+    provenColors
+  );
+
+  return { ...(dog?.genotype || {}), ...inferred };
+}
+
+function carriesChocolate(genotype) {
+  return (genotype?.Locus_B || []).includes('b');
+}
+
 // ─────────────────────────────────────────────────────────────
 // MANUAL SIMULATION
 // ─────────────────────────────────────────────────────────────
@@ -127,9 +170,16 @@ async function runSimulation(appState) {
     const male   = appState.dogs.find(d => d.id === maleId);
     const female = appState.dogs.find(d => d.id === femaleId);
     const uid    = appState.user.uid;
+    const dogsById = Object.fromEntries((appState.dogs || []).map(d => [d.id, d]));
+    const maleGenotype = inferDogGenotypeForSimulation(male, dogsById);
+    const femaleGenotype = inferDogGenotypeForSimulation(female, dogsById);
 
     const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
-    const litter    = simulateLitter(male.genotype || {}, female.genotype || {}, MONTE_CARLO_N);
+    console.debug('[Simulator] inferGenotype', {
+      male: { name: male?.name, locusB: maleGenotype?.Locus_B, carriesChocolate: carriesChocolate(maleGenotype), provenColors: male?.provenColors || male?.producedColors || [] },
+      female: { name: female?.name, locusB: femaleGenotype?.Locus_B, carriesChocolate: carriesChocolate(femaleGenotype), provenColors: female?.provenColors || female?.producedColors || [] }
+    });
+    const litter    = simulateLitter(maleGenotype, femaleGenotype, MONTE_CARLO_N);
     const stats     = litterStats(litter);
 
     renderResults(male, female, litter, stats, coiResult, appState);
@@ -507,9 +557,12 @@ async function runMatchmaker(appState) {
 
   try {
     const results = [];
+    const dogsById = Object.fromEntries((appState.dogs || []).map(d => [d.id, d]));
     for (const male of males) {
       for (const female of females) {
-        const litter     = simulateLitter(male.genotype || {}, female.genotype || {}, 100);
+        const maleGenotype = inferDogGenotypeForSimulation(male, dogsById);
+        const femaleGenotype = inferDogGenotypeForSimulation(female, dogsById);
+        const litter     = simulateLitter(maleGenotype, femaleGenotype, 100);
         const stats      = litterStats(litter);
         const matchCount = Object.entries(stats.counts)
           .filter(([label]) => label.toLowerCase().includes(target))

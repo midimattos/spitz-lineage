@@ -456,6 +456,13 @@ function initFormHandlers(container, appState) {
     const select = document.getElementById(id + '-select');
 
     select?.addEventListener('change', () => {
+      if (!select.value) {
+        fs[field+'Id'] = null;
+        fs[field+'Name'] = '';
+        if (input) input.value = '';
+        refreshDNAIfOpen();
+        return;
+      }
       const dog = dogsById[select.value];
       if (!dog) return;
       fs[field+'Id'] = dog.id;

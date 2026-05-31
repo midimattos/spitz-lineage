@@ -156,9 +156,16 @@ function inferGenotype(dog) {
     if (isSolidBlack) g.Locus_K = ['K', 'k'];
   }
 
-  // e locus — orange carrying recessive cream/white from ancestors/produced history
+// e locus — orange carrying recessive cream/white from ancestors/produced history
   if (isVisualOrange && hasAnyHistory(['creme', 'branco', 'white'])) {
     g.Locus_E = ['E', 'e'];
+  }
+
+  // M locus — Força o gene Merle dominante se a casca (fenótipo) for Merle
+  const isMerle = (dog?.phenotype?.marking || '').toLowerCase().includes('merle') || 
+                  (dog?.phenotype?.merleType || '').toLowerCase().includes('merle');
+  if (isMerle) {
+    g.Locus_M = ['M', 'm'];
   }
 
   return g;

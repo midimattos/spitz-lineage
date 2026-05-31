@@ -115,13 +115,24 @@ function normalizeColorList(colors = []) {
   return colors.map(c => String(c || '').toLowerCase()).filter(Boolean);
 }
 
+function isConcreteAllele(allele) {
+  return allele !== '?' && allele !== null && allele !== undefined && allele !== '';
+}
+
+function isConcretePair(pair) {
+  return Array.isArray(pair)
+    && pair.length === 2
+    && isConcreteAllele(pair[0])
+    && isConcreteAllele(pair[1]);
+}
+
 function ensureGenotypeFromDog(dog, producedColors) {
   const baseInferred = inferBaseGenotype(dog?.phenotype || {}, {}, producedColors);
   const current = dog?.genotype || {};
   const merged = {};
   for (const [locus, pair] of Object.entries(baseInferred)) {
     const existing = current[locus];
-    merged[locus] = Array.isArray(existing) && existing.length === 2 ? [...existing] : [...pair];
+    merged[locus] = isConcretePair(existing) ? [...existing] : [...pair];
   }
   return merged;
 }
@@ -142,12 +153,17 @@ function inferGenotype(dog) {
   const isVisualOrange = baseColor.includes('laranja') || baseColor.includes('sable');
   const isVisualCreamWhite = baseColor.includes('creme') || baseColor.includes('branco');
   const isVisualBlack = baseColor.includes('preto');
+  const isVisualBlue = baseColor.includes('azul') || baseColor.includes('cinza');
   const isVisualTan = baseColor.includes('tan') || baseColor.includes('tricolor');
+  const isVisualDark = isVisualBlack || isVisualChocolate || isVisualBlue;
+  const isVisualDense = isVisualBlack || isVisualChocolate || isVisualOrange;
   const isSolidBlack = isVisualBlack && !baseColor.includes('tricolor');
 
   // b locus — infer chocolate carriers from produced colors or ancestors
-  if (!isVisualChocolate && (isVisualBlack || isVisualCreamWhite || isVisualOrange) && hasAnyHistory(['chocolate'])) {
-    g.Locus_B = ['B', 'b'];
+  if (!isVisualChocolate && (isVisualBlack || isVisualBlue) && hasAnyHistory(['chocolate', 'beaver'])) {
+   g.Locus_B = ['B', 'b'];
+  } else if (!isVisualChocolate && (isVisualBlack || isVisualBlue)) {
+   g.Locus_B = ['B', 'B'];
   }
 
   // at locus — infer hidden tan from produced colors or ancestors
@@ -156,16 +172,27 @@ function inferGenotype(dog) {
     if (isSolidBlack) g.Locus_K = ['K', 'k'];
   }
 
-// e locus — orange carrying recessive cream/white from ancestors/produced history
-  if (isVisualOrange && hasAnyHistory(['creme', 'branco', 'white'])) {
+  // e locus — dark dogs only become carriers with explicit evidence
+  if (isVisualDark && hasAnyHistory(['laranja', 'sable', 'creme', 'branco', 'white'])) {
     g.Locus_E = ['E', 'e'];
+  } else if (isVisualDark) {
+    g.Locus_E = ['E', 'E'];
   }
 
-  // M locus — Força o gene Merle dominante se a casca (fenótipo) for Merle
+  // d locus — dense dogs only become carriers with explicit diluted evidence
+  if (isVisualDense && hasAnyHistory(['azul', 'cinza', 'lilás', 'lilas'])) {
+    g.Locus_D = ['D', 'd'];
+  } else if (isVisualDense) {
+    g.Locus_D = ['D', 'D'];
+  }
+
+  // M locus — só assume M quando há fenótipo merle ou evidência no histórico
   const isMerle = (dog?.phenotype?.marking || '').toLowerCase().includes('merle') || 
                   (dog?.phenotype?.merleType || '').toLowerCase().includes('merle');
-  if (isMerle) {
+  if (isMerle || hasAnyHistory(['merle'])) {
     g.Locus_M = ['M', 'm'];
+  } else {
+    g.Locus_M = ['m', 'm'];
   }
 
   return g;

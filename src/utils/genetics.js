@@ -10,6 +10,17 @@
 // ============================================================
 
 export const LOCI = ['A','K','E','B','D','S','M','H','I'];
+const LOCUS_FALLBACK = {
+  A: ['Ay', 'Ay'],
+  K: ['k', 'k'],
+  E: ['E', 'E'],
+  B: ['B', 'B'],
+  D: ['D', 'D'],
+  S: ['S', 'S'],
+  M: ['m', 'm'],
+  H: ['h', 'h'],
+  I: ['i', 'i'],
+};
 
 // ─────────────────────────────────────────────────────────────
 // GENOTYPE → PHENOTYPE  (o motor de tradução)
@@ -148,7 +159,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
     Locus_A: ['Ay','Ay'],
     Locus_K: ['k','k'],
     Locus_E: ['E','E'],
-    Locus_B: ['?','?'],
+    Locus_B: ['B','B'],
     Locus_D: ['D','D'],
     Locus_S: ['S','S'],
     Locus_M: ['m','m'],
@@ -159,6 +170,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   const inferredColors = Array.isArray(provenColors) ? [...provenColors] : [];
   const producedColors = Array.isArray(pedigree?.producedColors) ? pedigree.producedColors : [];
   if (producedColors.length) inferredColors.push(...producedColors);
+  const normalizedHistory = inferredColors.map(c => String(c || '').toLowerCase()).filter(Boolean);
 
   const ancestorBases = (pedigree?.ancestorPhenotypes || [])
     .map(p => (p?.baseColor || '').toLowerCase())
@@ -172,7 +184,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   // ────────────────────────────────────────────────────────
   if (base.includes('preto')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['B','?'];
+    g.Locus_B = ['B','B'];
     g.Locus_D = ['D','D'];
   }
   else if (base.includes('chocolate')) {
@@ -195,7 +207,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   }
   else if (base.includes('azul') || base.includes('cinza')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['B','?'];
+    g.Locus_B = ['B','B'];
     g.Locus_D = ['d','d'];
   }
   else if (base.includes('laranja') || base.includes('sable')) {
@@ -238,60 +250,47 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   // ────────────────────────────────────────────────────────
   const fatherBase = (pedigree?.fatherPhenotype?.baseColor || '').toLowerCase();
   const motherBase = (pedigree?.motherPhenotype?.baseColor || '').toLowerCase();
+  const pedigreeBases = [fatherBase, motherBase, ...ancestorBases].filter(Boolean);
+  const hasHistory = (terms) => normalizedHistory.some(c => terms.some(t => c.includes(t)));
+  const hasPedigree = (terms) => pedigreeBases.some(c => terms.some(t => c.includes(t)));
 
   // Se qualquer pai é chocolate/lilás/beaver → cão é portador B/b
   const parentHasB = [fatherBase, motherBase].some(b =>
     b.includes('chocolate') || b.includes('lilás') || b.includes('lilas') || b.includes('beaver')
   );
-  const ancestorHasB = ancestorBases.some(b =>
-    b.includes('chocolate') || b.includes('lilás') || b.includes('lilas') || b.includes('beaver')
-  );
-  if ((parentHasB || ancestorHasB) && g.Locus_B[0] === 'B') g.Locus_B = ['B','b'];
+  if (g.Locus_B[0] === 'B') {
+    const provedB = parentHasB || hasHistory(['chocolate', 'beaver']);
+    g.Locus_B = provedB ? ['B', 'b'] : ['B', 'B'];
+  }
 
   // Se qualquer pai é azul/lilás → cão é portador D/d
   const parentHasD = [fatherBase, motherBase].some(b =>
     b.includes('azul') || b.includes('cinza') || b.includes('lilás') || b.includes('lilas')
   );
-  if (parentHasD && g.Locus_D[0] === 'D') g.Locus_D = ['D','d'];
+  const isDense = base.includes('preto') || base.includes('chocolate') || base.includes('laranja') || base.includes('sable');
+  if (g.Locus_D[0] === 'D' && isDense) {
+    const provedD = parentHasD || hasHistory(['azul', 'cinza', 'lilás', 'lilas']);
+    g.Locus_D = provedD ? ['D', 'd'] : ['D', 'D'];
+  }
+
+  const isDarkBase = base.includes('preto') || base.includes('chocolate') || base.includes('azul') || base.includes('lilás') || base.includes('lilas');
+  const parentHasOrangeCream = [fatherBase, motherBase].some(b =>
+    b.includes('laranja') || b.includes('sable') || b.includes('creme') || b.includes('branco')
+  );
+  if (g.Locus_E[0] === 'E' && isDarkBase) {
+    const provedE = parentHasOrangeCream || hasHistory(['laranja', 'sable', 'creme', 'branco']);
+    g.Locus_E = provedE ? ['E', 'e'] : ['E', 'E'];
+  }
 
   // ────────────────────────────────────────────────────────
   // NÍVEL 3 — Histórico de Cores Produzidas (prioridade máxima)
   // ────────────────────────────────────────────────────────
-  if (inferredColors.includes('Chocolate') || inferredColors.includes('Beaver')) {
-    // Produziu chocolate OU beaver → necessariamente porta alelo b
-    if (g.Locus_B[0] !== 'b') g.Locus_B = ['B','b'];
-  }
-
-  if (inferredColors.includes('Lilás')) {
-    // Lilás = b/b + d/d nos filhotes → pai deve ser ao menos B/b e D/d
-    if (g.Locus_B[0] !== 'b') g.Locus_B = ['B','b'];
-    if (g.Locus_D[0] !== 'd') g.Locus_D = ['D','d'];
-    // Se o cão já é b/b (chocolate/lilás/beaver), então é D/d portador
-    // A regra real: para produzir lilás precisa de b e d em ambos os pais
-  }
-
-  if (inferredColors.includes('Beaver')) {
-    // Beaver exige b/b no filhote com pelo laranja
-    // → pai porta b, mas NÃO necessariamente d
-    if (g.Locus_B[0] !== 'b') g.Locus_B = ['B','b'];
-    // Locus_D permanece como inferido pelo fenótipo — beaver não implica diluição
-  }
-
-  if (inferredColors.includes('Azul/Cinza')) {
-    if (g.Locus_D[0] !== 'd') g.Locus_D = ['D','d'];
-  }
-
-  if (inferredColors.includes('Creme/Branco')) {
-    if (g.Locus_E[0] !== 'e') g.Locus_E = ['E','e'];
-  }
-
-  if (inferredColors.includes('Merle')) {
-    if (!g.Locus_M.includes('M')) g.Locus_M = ['M','m'];
-  }
-
-  if (g.Locus_B[0] === '?' && g.Locus_B[1] === '?') {
-    g.Locus_B = ['B','?'];
-  }
+  const isVisualMerle =
+    base.includes('merle')
+    || (phenotype?.marking || '').toLowerCase().includes('merle')
+    || (phenotype?.merleType || '').toLowerCase().includes('merle');
+  const hasMerleProof = hasHistory(['merle']) || hasPedigree(['merle']);
+  g.Locus_M = (isVisualMerle || hasMerleProof) ? ['M', 'm'] : ['m', 'm'];
 
   return g;
 }
@@ -300,13 +299,22 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
 // SIMULADOR DE NINHADA — Quadrado de Punnett
 // ─────────────────────────────────────────────────────────────
 export function simulateLitter(maleGenotype, femaleGenotype, size = 20) {
+  const sanitizePair = (pair, locus) => {
+    const fallback = LOCUS_FALLBACK[locus] || ['A', 'A'];
+    const source = Array.isArray(pair) && pair.length === 2 ? pair : fallback;
+    const first = (source[0] == null || source[0] === '?' || source[0] === '') ? fallback[0] : source[0];
+    const rawSecond = (source[1] == null || source[1] === '?' || source[1] === '') ? null : source[1];
+    const second = rawSecond || first;
+    return [first, second];
+  };
+
   const litter = [];
   for (let i = 0; i < size; i++) {
     const pupGenotype = {};
     for (const locus of LOCI) {
       const key   = `Locus_${locus}`;
-      const male  = maleGenotype[key]   || ['?','?'];
-      const fem   = femaleGenotype[key] || ['?','?'];
+      const male  = sanitizePair(maleGenotype[key], locus);
+      const fem   = sanitizePair(femaleGenotype[key], locus);
       const combo = [
         [male[0], fem[0]],
         [male[0], fem[1]],

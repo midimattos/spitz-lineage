@@ -277,10 +277,18 @@ export async function renderDogForm(container, appState) {
 }
 
 function ancestorField(label, id, field, lineageDogs = []) {
+  const escapeHtml = (v = '') => String(v).replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
   const requiredSex = field.toLowerCase().includes('grandfather') ? 'M' : 'F';
   const options = lineageDogs
     .filter(d => !d.sex || d.sex === requiredSex)
-    .map(d => `<option value="${d.id}" ${(fs[field+'Id']===d.id)?'selected':''}>${d.name} · ${d.phenotype?.label || d.phenotype?.baseColor || '—'}</option>`)
+    .map(d => {
+      const idVal = String(d.id || '');
+      const name = escapeHtml(d.name || '');
+      const pheno = escapeHtml(d.phenotype?.label || d.phenotype?.baseColor || '—');
+      return `<option value="${escapeHtml(idVal)}" ${(fs[field+'Id']===idVal)?'selected':''}>${name} · ${pheno}</option>`;
+    })
     .join('');
   return `
     <div class="form-group">

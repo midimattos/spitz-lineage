@@ -110,9 +110,29 @@ const TARGET_COLORS = [
   { value:'wolf',      label:'🐺 Wolf Sable' },
 ];
 
-function normalizeColorList(colors = []) {
-  if (!Array.isArray(colors)) return [];
-  return colors.map(c => String(c || '').toLowerCase()).filter(Boolean);
+function collectColorEvidence(...sources) {
+  const tokens = [];
+  const visit = (value) => {
+    if (value == null) return;
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (typeof value === 'object') {
+      visit(value.baseColor);
+      visit(value.color);
+      visit(value.marking);
+      visit(value.merleType);
+      visit(value.phenotype?.baseColor);
+      visit(value.phenotype?.marking);
+      visit(value.phenotype?.merleType);
+      return;
+    }
+    const normalized = String(normalizeColorName(value) || '').toLowerCase().trim();
+    if (normalized) tokens.push(normalized);
+  };
+  sources.forEach(visit);
+  return tokens;
 }
 
 function isConcreteAllele(allele) {
@@ -140,62 +160,126 @@ function ensureGenotypeFromDog(dog, producedColors) {
 function inferGenotype(dog) {
   const phenotype = dog?.phenotype || {};
   const baseColor = (phenotype.baseColor || dog?.baseColor || '').toLowerCase();
-  const producedColors = dog?.producedColors || dog?.provenColors || [];
-  const ancestorColors = dog?.ancestorColors || dog?.grandparentsColors || [];
-  const history = [
-    ...normalizeColorList(producedColors),
-    ...normalizeColorList(ancestorColors),
+  const producedColors = [
+    ...(Array.isArray(dog?.producedColors) ? dog.producedColors : []),
+    ...(Array.isArray(dog?.provenColors) ? dog.provenColors : []),
+    ...(Array.isArray(phenotype?.producedColors) ? phenotype.producedColors : []),
   ];
-  const hasAnyHistory = (terms) => history.some(c => terms.some(t => c.includes(t)));
+  const producedHistory = collectColorEvidence(producedColors);
+  const parentHistory = collectColorEvidence(
+    dog?.fatherColor,
+    dog?.motherColor,
+    dog?.father,
+    dog?.mother,
+    dog?.sire,
+    dog?.dam,
+    dog?.pedigree?.father,
+    dog?.pedigree?.mother,
+    dog?.pedigree?.fatherColor,
+    dog?.pedigree?.motherColor,
+  );
+  const ancestorHistory = collectColorEvidence(
+    dog?.ancestorColors,
+    dog?.grandparentsColors,
+    dog?.ancestors,
+    dog?.pedigree?.ancestors,
+    phenotype?.ancestorColors,
+    phenotype?.grandparentsColors,
+  );
+  const allHistory = [...producedHistory, ...parentHistory, ...ancestorHistory];
+  const hasAnyHistory = (pool, terms) => pool.some(c => terms.some(t => c.includes(t)));
 
   const g = ensureGenotypeFromDog(dog, producedColors);
-  const isVisualChocolate = baseColor.includes('chocolate') || baseColor.includes('lilás') || baseColor.includes('lilas') || baseColor.includes('beaver');
-  const isVisualOrange = baseColor.includes('laranja') || baseColor.includes('sable');
-  const isVisualCreamWhite = baseColor.includes('creme') || baseColor.includes('branco');
-  const isVisualBlack = baseColor.includes('preto');
-  const isVisualBlue = baseColor.includes('azul') || baseColor.includes('cinza');
-  const isVisualTan = baseColor.includes('tan') || baseColor.includes('tricolor');
-  const isVisualDark = isVisualBlack || isVisualChocolate || isVisualBlue;
+  const isVisualChocolate = baseColor.includes('chocolate') || baseColor.includes('beaver');
+  const isVisualLilac = baseColor.includes('lilás') || baseColor.includes('lilas') || baseColor.includes('lilac');
+  const isVisualOrange = baseColor.includes('laranja') || baseColor.includes('orange') || baseColor.includes('sable');
+  const isVisualCreamWhite = baseColor.includes('creme') || baseColor.includes('cream') || baseColor.includes('branco') || baseColor.includes('white');
+  const isVisualBlack = baseColor.includes('preto') || baseColor.includes('black');
+  const isVisualBlue = baseColor.includes('azul') || baseColor.includes('blue') || baseColor.includes('cinza');
+  const isVisualTan = baseColor.includes('tan') || baseColor.includes('tricolor') || baseColor.includes('fogo');
+  const isVisualDark = isVisualBlack || isVisualChocolate || isVisualBlue || isVisualLilac;
   const isVisualDense = isVisualBlack || isVisualChocolate || isVisualOrange;
-  const isSolidBlack = isVisualBlack && !baseColor.includes('tricolor');
+  const isSolidBlack = (isVisualBlack || isVisualBlue) && !baseColor.includes('tricolor');
 
-  // b locus — infer chocolate carriers from produced colors or ancestors
-  if (!isVisualChocolate && (isVisualBlack || isVisualBlue) && hasAnyHistory(['chocolate', 'beaver'])) {
-   g.Locus_B = ['B', 'b'];
-  } else if (!isVisualChocolate && (isVisualBlack || isVisualBlue)) {
-   g.Locus_B = ['B', 'B'];
+  // b locus — strict deterministic inference
+  if (isVisualChocolate || isVisualLilac) {
+    g.Locus_B = ['b', 'b'];
+  } else if (isSolidBlack) {
+    const hasChocolateProof =
+      hasAnyHistory(producedHistory, ['chocolate', 'beaver']) ||
+      hasAnyHistory(parentHistory, ['chocolate', 'beaver']);
+    g.Locus_B = hasChocolateProof ? ['B', 'b'] : ['B', 'B'];
   }
 
   // at locus — infer hidden tan from produced colors or ancestors
-  if (!isVisualTan && (isSolidBlack || isVisualOrange || isVisualCreamWhite) && hasAnyHistory(['tan points', 'tan', 'fogo'])) {
+  if (!isVisualTan && (isSolidBlack || isVisualOrange || isVisualCreamWhite) && hasAnyHistory(allHistory, ['tan points', 'tan', 'fogo'])) {
     g.Locus_A = ['Ay', 'at'];
     if (isSolidBlack) g.Locus_K = ['K', 'k'];
   }
 
-  // e locus — dark dogs only become carriers with explicit evidence
-  if (isVisualDark && hasAnyHistory(['laranja', 'sable', 'creme', 'branco', 'white'])) {
+  // e locus — strict deterministic inference
+  if (isVisualDark && (hasAnyHistory(producedHistory, ['laranja', 'orange', 'sable', 'creme', 'cream', 'branco', 'white']) || hasAnyHistory(parentHistory, ['laranja', 'orange', 'sable', 'creme', 'cream', 'branco', 'white']))) {
     g.Locus_E = ['E', 'e'];
-  } else if (isVisualDark) {
+  } else if (isVisualDark && !isVisualOrange && !isVisualCreamWhite) {
     g.Locus_E = ['E', 'E'];
   }
 
-  // d locus — dense dogs only become carriers with explicit diluted evidence
-  if (isVisualDense && hasAnyHistory(['azul', 'cinza', 'lilás', 'lilas'])) {
-    g.Locus_D = ['D', 'd'];
+  // d locus — strict deterministic inference
+  if (isVisualBlue || isVisualLilac || isVisualCreamWhite) {
+    g.Locus_D = ['d', 'd'];
   } else if (isVisualDense) {
+    const hasDiluteProof =
+      hasAnyHistory(producedHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac']) ||
+      hasAnyHistory(parentHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac', 'creme', 'cream']);
+    g.Locus_D = hasDiluteProof ? ['D', 'd'] : ['D', 'D'];
+  }
+
+  // preserve visual recessive e/e
+  if (isVisualOrange || isVisualCreamWhite) {
+    g.Locus_E = ['e', 'e'];
+  }
+
+  // preserve visual recessive chocolate phenotype
+  if (isVisualChocolate || isVisualLilac) {
+    g.Locus_B = ['b', 'b'];
+  }
+
+  // preserve visual recessive dilute phenotype
+  if (isVisualBlue || isVisualLilac || isVisualCreamWhite) {
+    g.Locus_D = ['d', 'd'];
+  } else if (isVisualDense && g.Locus_D[0] !== 'D') {
     g.Locus_D = ['D', 'D'];
   }
 
-  // M locus — só assume M quando há fenótipo merle ou evidência no histórico
+  // M locus — lock to m/m when non-merle with no explicit evidence
   const isMerle = (dog?.phenotype?.marking || '').toLowerCase().includes('merle') || 
                   (dog?.phenotype?.merleType || '').toLowerCase().includes('merle');
-  if (isMerle || hasAnyHistory(['merle'])) {
+  if (isMerle || hasAnyHistory(allHistory, ['merle'])) {
     g.Locus_M = ['M', 'm'];
   } else {
     g.Locus_M = ['m', 'm'];
   }
 
-  return g;
+  const fallbackByLocus = {
+    Locus_A: ['Ay', 'Ay'],
+    Locus_K: ['k', 'k'],
+    Locus_E: ['E', 'E'],
+    Locus_B: ['B', 'B'],
+    Locus_D: ['D', 'D'],
+    Locus_S: ['S', 'S'],
+    Locus_M: ['m', 'm'],
+    Locus_H: ['h', 'h'],
+    Locus_I: ['i', 'i'],
+  };
+
+  return Object.fromEntries(
+    Object.entries(fallbackByLocus).map(([locus, fallback]) => {
+      const pair = Array.isArray(g[locus]) ? g[locus] : fallback;
+      const first = isConcreteAllele(pair[0]) ? pair[0] : fallback[0];
+      const second = isConcreteAllele(pair[1]) ? pair[1] : first;
+      return [locus, [first, second]];
+    })
+  );
 }
 
 
@@ -216,8 +300,14 @@ async function runSimulation(appState) {
     const male   = appState.dogs.find(d => d.id === maleId);
     const female = appState.dogs.find(d => d.id === femaleId);
     const uid    = appState.user.uid;
-const maleGenotype = inferGenotype(male);
+    const maleGenotype = inferGenotype(male);
     const femaleGenotype = inferGenotype(female);
+    if (globalThis?.__SPITZ_DEBUG_INFERENCE__) {
+      console.debug('Inferência genética:', {
+        macho: { nome: male?.name, genotype: maleGenotype },
+        femea: { nome: female?.name, genotype: femaleGenotype },
+      });
+    }
 
     const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
     const litter    = simulateLitter(maleGenotype, femaleGenotype, MONTE_CARLO_N);

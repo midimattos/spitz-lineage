@@ -163,7 +163,7 @@ function inferGenotype(dog) {
 
   return g;
 }
-}
+
 
 // ─────────────────────────────────────────────────────────────
 // MANUAL SIMULATION

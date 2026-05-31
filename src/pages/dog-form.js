@@ -62,6 +62,21 @@ function resetFormState() {
   };
 }
 
+function normalizeAncestors(source = {}) {
+  const fromAncestors = source.ancestors || {};
+  const fromPedigree  = source.pedigree  || {};
+  return {
+    patGrandfatherId:   fromAncestors.paternal?.grandfather?.id   || fromPedigree.patGrandfatherId   || null,
+    patGrandfatherName: fromAncestors.paternal?.grandfather?.name || fromPedigree.patGrandfatherName || '',
+    patGrandmotherId:   fromAncestors.paternal?.grandmother?.id   || fromPedigree.patGrandmotherId   || null,
+    patGrandmotherName: fromAncestors.paternal?.grandmother?.name || fromPedigree.patGrandmotherName || '',
+    matGrandfatherId:   fromAncestors.maternal?.grandfather?.id   || fromPedigree.matGrandfatherId   || null,
+    matGrandfatherName: fromAncestors.maternal?.grandfather?.name || fromPedigree.matGrandfatherName || '',
+    matGrandmotherId:   fromAncestors.maternal?.grandmother?.id   || fromPedigree.matGrandmotherId   || null,
+    matGrandmotherName: fromAncestors.maternal?.grandmother?.name || fromPedigree.matGrandmotherName || '',
+  };
+}
+
 export async function renderDogForm(container, appState) {
   const depth = wizardStack.length;
 
@@ -92,6 +107,7 @@ export async function renderDogForm(container, appState) {
   if (appState.editingDogId) {
     existing = await getDog(appState.user.uid, appState.editingDogId);
     if (existing) {
+const anc = normalizeAncestors(existing);
       fs.provenColors    = existing.producedColors || existing.provenColors || [];
       fs.ancestorColors  = existing.ancestorColors || existing.grandparentsColors || [];
       fs.photoURL        = existing.photoURL || null;
@@ -99,16 +115,19 @@ export async function renderDogForm(container, appState) {
       fs.fatherName      = existing.pedigree?.fatherName || '';
       fs.motherId        = existing.pedigree?.motherId || null;
       fs.motherName      = existing.pedigree?.motherName || '';
-      fs.patGrandfatherId   = existing.pedigree?.patGrandfatherId || null;
-      fs.patGrandfatherName = existing.pedigree?.patGrandfatherName || '';
-      fs.patGrandmotherId   = existing.pedigree?.patGrandmotherId || null;
-      fs.patGrandmotherName = existing.pedigree?.patGrandmotherName || '';
-      fs.matGrandfatherId   = existing.pedigree?.matGrandfatherId || null;
-      fs.matGrandfatherName = existing.pedigree?.matGrandfatherName || '';
-      fs.matGrandmotherId   = existing.pedigree?.matGrandmotherId || null;
-      fs.matGrandmotherName = existing.pedigree?.matGrandmotherName || '';
+      fs.patGrandfatherId   = anc.patGrandfatherId;
+      fs.patGrandfatherName = anc.patGrandfatherName;
+      fs.patGrandmotherId   = anc.patGrandmotherId;
+      fs.patGrandmotherName = anc.patGrandmotherName;
+      fs.matGrandfatherId   = anc.matGrandfatherId;
+      fs.matGrandfatherName = anc.matGrandfatherName;
+      fs.matGrandmotherId   = anc.matGrandmotherId;
+      fs.matGrandmotherName = anc.matGrandmotherName;
     }
   }
+  const lineageDogs = (appState.dogs || [])
+    .filter(d => d.id !== appState.editingDogId)
+    .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
 
   const BASE_COLORS = [
     'Preto', 'Chocolate', 'Lilás', 'Beaver',
@@ -306,11 +325,11 @@ export async function renderDogForm(container, appState) {
       <!-- ── TAB AVÓS ── -->
       <div class="tab-panel" id="tab-grandparents">
         <div class="divider-label">Linha Paterna</div>
-        ${ancestorField('Avô Paterno','pat-gf','patGrandfather',canNewGrandparent)}
-        ${ancestorField('Avó Paterna','pat-gm','patGrandmother',canNewGrandparent)}
+${ancestorField('Avô Paterno','pat-gf','patGrandfather', lineageDogs, canNewGrandparent)}
+        ${ancestorField('Avó Paterna','pat-gm','patGrandmother', lineageDogs, canNewGrandparent)}
         <div class="divider-label">Linha Materna</div>
-        ${ancestorField('Avô Materno','mat-gf','matGrandfather',canNewGrandparent)}
-        ${ancestorField('Avó Materna','mat-gm','matGrandmother',canNewGrandparent)}
+        ${ancestorField('Avô Materno','mat-gf','matGrandfather', lineageDogs, canNewGrandparent)}
+        ${ancestorField('Avó Materna','mat-gm','matGrandmother', lineageDogs, canNewGrandparent)}
         <div class="form-group">
           <label class="form-label">Cores dos Avós / Ancestrais</label>
           <p class="text-sm text-muted" style="margin-bottom:8px">Usadas para inferir genes recessivos ocultos.</p>
@@ -347,10 +366,28 @@ export async function renderDogForm(container, appState) {
   initFormHandlers(container, appState);
 }
 
-function ancestorField(label, id, field, showNewButton) {
+function ancestorField(label, id, field, lineageDogs = [], showNewButton) {
+  const escapeHtml = (v = '') => String(v).replace(/[&<>"']/g, (ch) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+  ));
+  const requiredSex = field.toLowerCase().includes('grandfather') ? 'M' : 'F';
+  const options = lineageDogs
+    .filter(d => !d.sex || d.sex === requiredSex)
+    .map(d => {
+      const idVal = String(d.id || '');
+      const name = escapeHtml(d.name || '');
+      const pheno = escapeHtml(d.phenotype?.label || d.phenotype?.baseColor || '—');
+      return `<option value="${escapeHtml(idVal)}" ${(fs[field+'Id']===idVal)?'selected':''}>${name} · ${pheno}</option>`;
+    })
+    .join('');
   return `
     <div class="form-group">
       <label class="form-label">${label}</label>
+      <select class="form-select" id="${id}-select" data-field="${field}">
+        <option value="">Selecionar do Banco de Linhagem…</option>
+        ${options}
+      </select>
+      <p class="text-sm text-muted mt-8">${requiredSex === 'M' ? 'Selecione um macho já cadastrado ou digite manualmente abaixo.' : 'Selecione uma fêmea já cadastrada ou digite manualmente abaixo.'}</p>
       <div class="autocomplete-wrap">
         <input class="form-input" id="${id}-input" placeholder="${label}…"
           value="${(fs[field+'Name'])||''}" autocomplete="off" data-field="${field}" />
@@ -366,6 +403,7 @@ function ancestorField(label, id, field, showNewButton) {
 
 function initFormHandlers(container, appState) {
   const uid = appState.user.uid;
+  const dogsById = Object.fromEntries((appState.dogs || []).map(d => [d.id, d]));
 
   // ── Wizard: Voltar sem salvar ─────────────────────────────
   document.getElementById('btn-wizard-back')?.addEventListener('click', async () => {
@@ -455,6 +493,15 @@ function initFormHandlers(container, appState) {
     });
   });
 
+  const refreshDNAIfOpen = () => {
+    const dnaTab = document.getElementById('tab-genetics');
+    if (dnaTab?.classList.contains('active')) updateGenotypePreview();
+  };
+  ['baseColor','marking','nose','dilution','merleType','intensity'].forEach(name => {
+    const el = document.querySelector(`#dog-form [name="${name}"]`);
+    el?.addEventListener('change', refreshDNAIfOpen);
+  });
+
   // ── Presets
   container.querySelectorAll('[data-preset]').forEach(chip => {
     chip.addEventListener('click', () => {
@@ -497,6 +544,7 @@ function initFormHandlers(container, appState) {
         fs.provenColors.push(c);
         chip.classList.add('active');
       }
+      refreshDNAIfOpen();
     });
   });
 
@@ -588,10 +636,45 @@ function initFormHandlers(container, appState) {
     ['mat-gf','matGrandfather'],
     ['mat-gm','matGrandmother']
   ].forEach(([id, field]) => {
+    const input = document.getElementById(id + '-input');
+    const select = document.getElementById(id + '-select');
+
+    select?.addEventListener('change', () => {
+      if (!select.value) {
+        fs[field+'Id'] = null;
+        fs[field+'Name'] = '';
+        if (input) input.value = '';
+        refreshDNAIfOpen();
+        return;
+      }
+      const dog = dogsById[select.value];
+      if (!dog) return;
+      fs[field+'Id'] = dog.id;
+      fs[field+'Name'] = dog.name;
+      if (input) input.value = dog.name;
+      markAutoFilled(id + '-input');
+      refreshDNAIfOpen();
+    });
+
+    input?.addEventListener('input', () => {
+      fs[field+'Name'] = input.value.trim();
+      if (fs[field+'Id'] && dogsById[fs[field+'Id']]?.name !== fs[field+'Name']) {
+        fs[field+'Id'] = null;
+      }
+      if (select && fs[field+'Id']) {
+        select.value = fs[field+'Id'];
+      } else if (select) {
+        select.value = '';
+      }
+      refreshDNAIfOpen();
+    });
+
     setupAC(id+'-input', id+'-dropdown', uid, (dog) => {
       fs[field+'Id'] = dog.id; fs[field+'Name'] = dog.name;
+if (select) select.value = dog.id;
       const st = document.getElementById(id+'-status');
       if (st) st.textContent = '✓ Vinculado: ' + dog.name;
+      refreshDNAIfOpen();
     });
   });
 
@@ -624,7 +707,16 @@ function initFormHandlers(container, appState) {
       };
       const genotype = inferGenotype(
         phenotype,
-        { fatherPhenotype: fs.fatherPhenotype, motherPhenotype: fs.motherPhenotype },
+        {
+          fatherPhenotype: fs.fatherPhenotype,
+          motherPhenotype: fs.motherPhenotype,
+          ancestorPhenotypes: [
+            dogsById[fs.patGrandfatherId]?.phenotype,
+            dogsById[fs.patGrandmotherId]?.phenotype,
+            dogsById[fs.matGrandfatherId]?.phenotype,
+            dogsById[fs.matGrandmotherId]?.phenotype
+          ].filter(Boolean)
+        },
         fs.provenColors
       );
       const data = {
@@ -645,6 +737,16 @@ function initFormHandlers(container, appState) {
           patGrandmotherId:   fs.patGrandmotherId||null,   patGrandmotherName:   fs.patGrandmotherName||'',
           matGrandfatherId:   fs.matGrandfatherId||null,   matGrandfatherName:   fs.matGrandfatherName||'',
           matGrandmotherId:   fs.matGrandmotherId||null,   matGrandmotherName:   fs.matGrandmotherName||''
+        },
+        ancestors: {
+          paternal: {
+            grandfather: { id: fs.patGrandfatherId || null, name: fs.patGrandfatherName || '' },
+            grandmother: { id: fs.patGrandmotherId || null, name: fs.patGrandmotherName || '' }
+          },
+          maternal: {
+            grandfather: { id: fs.matGrandfatherId || null, name: fs.matGrandfatherName || '' },
+            grandmother: { id: fs.matGrandmotherId || null, name: fs.matGrandmotherName || '' }
+          }
         }
       };
 
@@ -782,8 +884,27 @@ function showAutoFillToast(message) {
 function updateGenotypePreview() {
   const form = document.getElementById('dog-form');
   if (!form) return;
-  const phenotype = { baseColor: form.baseColor?.value||'', marking: form.marking?.value||'' };
-  const genotype  = inferGenotype(phenotype, { fatherPhenotype: fs.fatherPhenotype }, fs.provenColors);
+  const phenotype = {
+    baseColor: form.baseColor?.value || '',
+    marking: form.marking?.value || '',
+    nose: form.nose?.value || '',
+    dilution: form.dilution?.value || ''
+  };
+  const dogsById = Object.fromEntries((state.dogs || []).map(d => [d.id, d]));
+  const genotype  = inferGenotype(
+    phenotype,
+    {
+      fatherPhenotype: fs.fatherPhenotype,
+      motherPhenotype: fs.motherPhenotype,
+      ancestorPhenotypes: [
+        dogsById[fs.patGrandfatherId]?.phenotype,
+        dogsById[fs.patGrandmotherId]?.phenotype,
+        dogsById[fs.matGrandfatherId]?.phenotype,
+        dogsById[fs.matGrandmotherId]?.phenotype
+      ].filter(Boolean)
+    },
+    fs.provenColors
+  );
   const pheno     = genotypeToPhenotype(genotype);
   const el        = document.getElementById('genotype-preview');
   if (!el) return;

@@ -163,6 +163,7 @@ function inferGenotype(dog) {
 
   return g;
 }
+}
 
 // ─────────────────────────────────────────────────────────────
 // MANUAL SIMULATION
@@ -181,7 +182,7 @@ async function runSimulation(appState) {
     const male   = appState.dogs.find(d => d.id === maleId);
     const female = appState.dogs.find(d => d.id === femaleId);
     const uid    = appState.user.uid;
-    const maleGenotype = inferGenotype(male);
+const maleGenotype = inferGenotype(male);
     const femaleGenotype = inferGenotype(female);
 
     const coiResult = await deepCOI(uid, maleId, femaleId, appState.dogs);
@@ -563,9 +564,10 @@ async function runMatchmaker(appState) {
 
   try {
     const results = [];
+    const dogsById = Object.fromEntries((appState.dogs || []).map(d => [d.id, d]));
     for (const male of males) {
       for (const female of females) {
-        const maleGenotype = inferGenotype(male);
+const maleGenotype = inferGenotype(male);
         const femaleGenotype = inferGenotype(female);
         const litter     = simulateLitter(maleGenotype, femaleGenotype, 100);
         const stats      = litterStats(litter);

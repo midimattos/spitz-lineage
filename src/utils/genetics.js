@@ -148,13 +148,21 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
     Locus_A: ['Ay','Ay'],
     Locus_K: ['k','k'],
     Locus_E: ['E','E'],
-    Locus_B: ['B','B'],
+    Locus_B: ['?','?'],
     Locus_D: ['D','D'],
     Locus_S: ['S','S'],
     Locus_M: ['m','m'],
     Locus_H: ['h','h'],
     Locus_I: ['i','i'],
   };
+
+  const inferredColors = Array.isArray(provenColors) ? [...provenColors] : [];
+  const producedColors = Array.isArray(pedigree?.producedColors) ? pedigree.producedColors : [];
+  if (producedColors.length) inferredColors.push(...producedColors);
+
+  const ancestorBases = (pedigree?.ancestorPhenotypes || [])
+    .map(p => (p?.baseColor || '').toLowerCase())
+    .filter(Boolean);
 
   const base = (phenotype?.baseColor || '').toLowerCase();
   const nose = (phenotype?.nose || '').toLowerCase();
@@ -164,7 +172,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   // ────────────────────────────────────────────────────────
   if (base.includes('preto')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['B','B'];
+    g.Locus_B = ['B','?'];
     g.Locus_D = ['D','D'];
   }
   else if (base.includes('chocolate')) {
@@ -187,7 +195,7 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   }
   else if (base.includes('azul') || base.includes('cinza')) {
     g.Locus_K = ['K','k'];
-    g.Locus_B = ['B','B'];
+    g.Locus_B = ['B','?'];
     g.Locus_D = ['d','d'];
   }
   else if (base.includes('laranja') || base.includes('sable')) {
@@ -235,7 +243,10 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   const parentHasB = [fatherBase, motherBase].some(b =>
     b.includes('chocolate') || b.includes('lilás') || b.includes('lilas') || b.includes('beaver')
   );
-  if (parentHasB && g.Locus_B[0] === 'B') g.Locus_B = ['B','b'];
+  const ancestorHasB = ancestorBases.some(b =>
+    b.includes('chocolate') || b.includes('lilás') || b.includes('lilas') || b.includes('beaver')
+  );
+  if ((parentHasB || ancestorHasB) && g.Locus_B[0] === 'B') g.Locus_B = ['B','b'];
 
   // Se qualquer pai é azul/lilás → cão é portador D/d
   const parentHasD = [fatherBase, motherBase].some(b =>
@@ -246,12 +257,12 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
   // ────────────────────────────────────────────────────────
   // NÍVEL 3 — Histórico de Cores Produzidas (prioridade máxima)
   // ────────────────────────────────────────────────────────
-  if (provenColors.includes('Chocolate') || provenColors.includes('Beaver')) {
+  if (inferredColors.includes('Chocolate') || inferredColors.includes('Beaver')) {
     // Produziu chocolate OU beaver → necessariamente porta alelo b
     if (g.Locus_B[0] !== 'b') g.Locus_B = ['B','b'];
   }
 
-  if (provenColors.includes('Lilás')) {
+  if (inferredColors.includes('Lilás')) {
     // Lilás = b/b + d/d nos filhotes → pai deve ser ao menos B/b e D/d
     if (g.Locus_B[0] !== 'b') g.Locus_B = ['B','b'];
     if (g.Locus_D[0] !== 'd') g.Locus_D = ['D','d'];
@@ -259,23 +270,27 @@ export function inferGenotype(phenotype, pedigree = {}, provenColors = []) {
     // A regra real: para produzir lilás precisa de b e d em ambos os pais
   }
 
-  if (provenColors.includes('Beaver')) {
+  if (inferredColors.includes('Beaver')) {
     // Beaver exige b/b no filhote com pelo laranja
     // → pai porta b, mas NÃO necessariamente d
     if (g.Locus_B[0] !== 'b') g.Locus_B = ['B','b'];
     // Locus_D permanece como inferido pelo fenótipo — beaver não implica diluição
   }
 
-  if (provenColors.includes('Azul/Cinza')) {
+  if (inferredColors.includes('Azul/Cinza')) {
     if (g.Locus_D[0] !== 'd') g.Locus_D = ['D','d'];
   }
 
-  if (provenColors.includes('Creme/Branco')) {
+  if (inferredColors.includes('Creme/Branco')) {
     if (g.Locus_E[0] !== 'e') g.Locus_E = ['E','e'];
   }
 
-  if (provenColors.includes('Merle')) {
+  if (inferredColors.includes('Merle')) {
     if (!g.Locus_M.includes('M')) g.Locus_M = ['M','m'];
+  }
+
+  if (g.Locus_B[0] === '?' && g.Locus_B[1] === '?') {
+    g.Locus_B = ['B','?'];
   }
 
   return g;

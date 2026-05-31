@@ -20,6 +20,7 @@ const LOCAL_PRESETS = {
   'Creme':      { baseColor:'Creme/Branco', marking:'Sólido',    nose:'Preta',                  dilution:'densa'   },
   'Wolf Sable': { baseColor:'Wolf Sable',   marking:'Wolf Sable',nose:'Preta',                  dilution:'densa'   },
   'Tricolor':   { baseColor:'Tricolor',     marking:'Tricolor',  nose:'Preta',                  dilution:'densa'   },
+  'Particolor': { baseColor:'Preto',        marking:'Particolor',nose:'Preta',                  dilution:'densa'   },
   'Merle':      { baseColor:'Merle',        marking:'Merle',     nose:'Preta',                  dilution:'densa'   },
 };
 
@@ -28,14 +29,28 @@ const LOCAL_PRESETS = {
 const LOCAL_PROVEN_COLORS = [
   'Preto','Chocolate','Lilás','Beaver',
   'Laranja/Sable','Wolf Sable','Azul/Cinza',
-  'Creme/Branco','Merle','Tricolor','Tan Points',
+  'Creme/Branco','Merle','Tricolor','Particolor','Tan Points',
 ];
+const LOCAL_ANCESTOR_COLORS = [...LOCAL_PROVEN_COLORS];
 
 let fs = resetFormState();
+let wizardStack = []; // { targetField, relativeLabel, savedFs, savedFormSnapshot, savedEditingDogId }
+let pendingFormRestore = null; // form field values to restore after wizard pop
+let _wizardTransition = false; // true when renderDogForm is called from within the wizard
+
+const RELATIVE_LABELS = {
+  fatherId:         'Pai',
+  motherId:         'Mãe',
+  patGrandfatherId: 'Avô Paterno',
+  patGrandmotherId: 'Avó Paterna',
+  matGrandfatherId: 'Avô Materno',
+  matGrandmotherId: 'Avó Materna',
+};
 
 function resetFormState() {
   return {
     provenColors: [],
+    ancestorColors: [],
     photoURL: null,
     photoFile: null,
     fatherId: null, fatherName: '', fatherPhenotype: null,
@@ -63,14 +78,38 @@ function normalizeAncestors(source = {}) {
 }
 
 export async function renderDogForm(container, appState) {
-  let existing = null;
-  fs = resetFormState();
+  const depth = wizardStack.length;
 
+  // Consume any pending restore snapshot from a wizard pop
+  const formDefaults = pendingFormRestore || {};
+  pendingFormRestore = null;
+
+  // Detect if this render was triggered internally by the wizard (vs. external nav)
+  const isWizardTransition = _wizardTransition;
+  _wizardTransition = false;
+
+  // If called externally while a wizard was in progress (e.g., via bottom nav),
+  // reset everything so we start fresh.
+  if (depth > 0 && !isWizardTransition) {
+    wizardStack = [];
+    fs = resetFormState();
+  } else if (depth === 0 && !isWizardTransition) {
+    // Fresh top-level render
+    fs = resetFormState();
+  }
+  // (If isWizardTransition is true, fs was already managed by the wizard handlers)
+
+  // Re-read depth after potential stack reset
+  const currentDepth = wizardStack.length;
+  const currentWizardCtx = currentDepth > 0 ? wizardStack[currentDepth - 1] : null;
+
+  let existing = null;
   if (appState.editingDogId) {
     existing = await getDog(appState.user.uid, appState.editingDogId);
     if (existing) {
-      const anc = normalizeAncestors(existing);
-      fs.provenColors    = existing.provenColors || [];
+const anc = normalizeAncestors(existing);
+      fs.provenColors    = existing.producedColors || existing.provenColors || [];
+      fs.ancestorColors  = existing.ancestorColors || existing.grandparentsColors || [];
       fs.photoURL        = existing.photoURL || null;
       fs.fatherId        = existing.pedigree?.fatherId || null;
       fs.fatherName      = existing.pedigree?.fatherName || '';
@@ -102,14 +141,48 @@ export async function renderDogForm(container, appState) {
   const MERLE_TYPES = ['Não Merle','Merle','Harlequin'];
   const INTENSITIES = ['Alta (Vívida)','Média','Baixa (Pálida)'];
 
+  // Build "Cadastrar novo" buttons: shown in parent fields when depth < 2,
+  // shown in grandparent fields only at depth 0.
+  const canNewParent      = currentDepth < 2;
+  const canNewGrandparent = currentDepth === 0;
+
   function opt(arr, val) {
-    return arr.map(v=>`<option value="${v.toLowerCase().replace(/\//g,'_').replace(/ /g,'_')}"
-      ${existing?.phenotype?.[val]===v.toLowerCase().replace(/\//g,'_').replace(/ /g,'_')?'selected':''}>${v}</option>`).join('');
+    const currentVal = existing?.phenotype?.[val] || formDefaults[val] || '';
+    return arr.map(v=>{
+      const encoded = v.toLowerCase().replace(/\//g,'_').replace(/ /g,'_');
+      return `<option value="${encoded}" ${currentVal===encoded?'selected':''}>${v}</option>`;
+    }).join('');
   }
 
+  // Wizard breadcrumb
+  function renderBreadcrumb() {
+    if (currentDepth === 0) return '';
+    const chain = wizardStack.map(w => `<span class="wiz-crumb">${w.relativeLabel}</span>`).join('<span class="wiz-sep">›</span>');
+    return `<div class="wizard-breadcrumb">
+      <button type="button" class="btn btn-ghost btn-sm" id="btn-wizard-back">← Voltar sem salvar</button>
+      <div class="wizard-path">${chain}</div>
+    </div>`;
+  }
+
+  // Button helper for "Cadastrar novo"
+  function newBtn(targetField, inputId, show) {
+    if (!show) return '';
+    const label = RELATIVE_LABELS[targetField] || targetField;
+    return `<button type="button" class="btn btn-outline btn-sm btn-new-relative"
+      data-target="${targetField}" data-input="${inputId}" style="margin-top:8px">
+      ➕ Cadastrar novo ${label}
+    </button>`;
+  }
+
+  const pageTitle = currentDepth > 0
+    ? `Cadastrar ${currentWizardCtx.relativeLabel}`
+    : (appState.editingDogId ? 'Editar Cão' : 'Cadastrar Cão');
+
   container.innerHTML = `
+    ${renderBreadcrumb()}
     <div class="page-header">
-      <h1 class="font-display">${appState.editingDogId ? 'Editar Cão' : 'Cadastrar Cão'}</h1>
+      <h1 class="font-display">${pageTitle}</h1>
+      ${currentDepth > 0 && wizardStack.length > 1 ? `<p class="text-sm text-muted">dentro do cadastro de ${wizardStack[currentDepth-2].relativeLabel}</p>` : ''}
     </div>
 
     <div class="tabs" id="form-tabs">
@@ -126,14 +199,14 @@ export async function renderDogForm(container, appState) {
         <div class="form-group">
           <label class="form-label">Nome do Cão *</label>
           <input class="form-input" name="name" placeholder="ex: Lord Chocolate von Haus"
-            value="${existing?.name||''}" required />
+            value="${existing?.name || formDefaults.name || ''}" required />
         </div>
 
         <div class="form-group">
           <label class="form-label">Foto do Cão</label>
           <div class="photo-upload-wrap" id="photo-upload-wrap">
-            ${existing?.photoURL
-              ? `<img src="${existing.photoURL}" class="photo-preview" id="photo-preview" alt="Foto" />`
+            ${(existing?.photoURL || fs.photoURL)
+              ? `<img src="${existing?.photoURL || fs.photoURL}" class="photo-preview" id="photo-preview" alt="Foto" />`
               : `<div class="photo-placeholder" id="photo-placeholder">
                   <span style="font-size:2rem">📷</span>
                   <span class="text-muted text-sm">Toque para adicionar foto</span>
@@ -141,21 +214,21 @@ export async function renderDogForm(container, appState) {
             }
             <input type="file" id="photo-file-input" accept="image/*" style="display:none" />
           </div>
-          <p class="text-sm text-muted mt-8" id="photo-status">${existing?.photoURL ? '✓ Foto carregada' : 'JPG ou PNG · Máx 5MB'}</p>
+          <p class="text-sm text-muted mt-8" id="photo-status">${(existing?.photoURL || fs.photoURL) ? '✓ Foto carregada' : 'JPG ou PNG · Máx 5MB'}</p>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div class="form-group">
             <label class="form-label">Sexo</label>
             <select class="form-select" name="sex">
-              <option value="M" ${existing?.sex==='M'?'selected':''}>♂ Macho</option>
-              <option value="F" ${existing?.sex==='F'?'selected':''}>♀ Fêmea</option>
+              <option value="M" ${(existing?.sex || formDefaults.sex || 'M')==='M'?'selected':''}>♂ Macho</option>
+              <option value="F" ${(existing?.sex || formDefaults.sex)==='F'?'selected':''}>♀ Fêmea</option>
             </select>
           </div>
           <div class="form-group">
             <label class="form-label">Tipo</label>
             <select class="form-select" name="belongsToMe">
-              <option value="true"  ${existing?.belongsToMe!==false?'selected':''}>Meu Canil</option>
-              <option value="false" ${existing?.belongsToMe===false ?'selected':''}>Linhagem</option>
+              <option value="true"  ${(existing?.belongsToMe!==false && formDefaults.belongsToMe!=='false')?'selected':''}>Meu Canil</option>
+              <option value="false" ${(existing?.belongsToMe===false || formDefaults.belongsToMe==='false')?'selected':''}>Linhagem</option>
             </select>
           </div>
         </div>
@@ -175,8 +248,11 @@ export async function renderDogForm(container, appState) {
           <div class="form-group">
             <label class="form-label">Diluição</label>
             <select class="form-select" name="dilution">
-              ${DILUTIONS.map(v=>`<option value="${v.toLowerCase().split(' ')[0]}"
-                ${existing?.phenotype?.dilution===v.toLowerCase().split(' ')[0]?'selected':''}>${v}</option>`).join('')}
+              ${DILUTIONS.map(v=>{
+                const val = v.toLowerCase().split(' ')[0];
+                const cur = existing?.phenotype?.dilution || formDefaults.dilution || '';
+                return `<option value="${val}" ${cur===val?'selected':''}>${v}</option>`;
+              }).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -184,8 +260,8 @@ export async function renderDogForm(container, appState) {
             <select class="form-select" name="merleType">
               ${MERLE_TYPES.map(v=>{
                 const val = v.toLowerCase().replace(/ã/g,'a').replace(/ /g,'_');
-                return `<option value="${val}"
-                  ${existing?.phenotype?.merleType===val?'selected':''}>${v}</option>`;
+                const cur = existing?.phenotype?.merleType || formDefaults.merleType || '';
+                return `<option value="${val}" ${cur===val?'selected':''}>${v}</option>`;
               }).join('')}
             </select>
           </div>
@@ -195,8 +271,8 @@ export async function renderDogForm(container, appState) {
           <select class="form-select" name="intensity">
             ${INTENSITIES.map(v=>{
               const val = v.toLowerCase().split(' ')[0];
-              return `<option value="${val}"
-                ${existing?.phenotype?.intensity===val?'selected':''}>${v}</option>`;
+              const cur = existing?.phenotype?.intensity || formDefaults.intensity || '';
+              return `<option value="${val}" ${cur===val?'selected':''}>${v}</option>`;
             }).join('')}
           </select>
         </div>
@@ -229,6 +305,7 @@ export async function renderDogForm(container, appState) {
             <div class="autocomplete-dropdown hidden" id="father-dropdown"></div>
           </div>
           <p class="text-sm text-muted mt-8" id="father-status">${fs.fatherId?'✓ Vinculado: '+fs.fatherName:''}</p>
+          ${newBtn('fatherId','father-input',canNewParent)}
         </div>
         <div class="form-group">
           <label class="form-label">Mãe</label>
@@ -238,20 +315,30 @@ export async function renderDogForm(container, appState) {
             <div class="autocomplete-dropdown hidden" id="mother-dropdown"></div>
           </div>
           <p class="text-sm text-muted mt-8" id="mother-status">${fs.motherId?'✓ Vinculada: '+fs.motherName:''}</p>
+          ${newBtn('motherId','mother-input',canNewParent)}
         </div>
         <div class="alert alert-info">
-          💡 Ao selecionar um pai/mãe, os avós são preenchidos automaticamente na aba Avós.
+          💡 Ao selecionar um pai/mãe, os avós são preenchidos automaticamente na aba Avós. Se não estiver cadastrado, use "Cadastrar novo" para registrá-lo agora.
         </div>
       </div>
 
       <!-- ── TAB AVÓS ── -->
       <div class="tab-panel" id="tab-grandparents">
         <div class="divider-label">Linha Paterna</div>
-        ${ancestorField('Avô Paterno','pat-gf','patGrandfather', lineageDogs)}
-        ${ancestorField('Avó Paterna','pat-gm','patGrandmother', lineageDogs)}
+${ancestorField('Avô Paterno','pat-gf','patGrandfather', lineageDogs, canNewGrandparent)}
+        ${ancestorField('Avó Paterna','pat-gm','patGrandmother', lineageDogs, canNewGrandparent)}
         <div class="divider-label">Linha Materna</div>
-        ${ancestorField('Avô Materno','mat-gf','matGrandfather', lineageDogs)}
-        ${ancestorField('Avó Materna','mat-gm','matGrandmother', lineageDogs)}
+        ${ancestorField('Avô Materno','mat-gf','matGrandfather', lineageDogs, canNewGrandparent)}
+        ${ancestorField('Avó Materna','mat-gm','matGrandmother', lineageDogs, canNewGrandparent)}
+        <div class="form-group">
+          <label class="form-label">Cores dos Avós / Ancestrais</label>
+          <p class="text-sm text-muted" style="margin-bottom:8px">Usadas para inferir genes recessivos ocultos.</p>
+          <div class="chips-group" id="ancestor-chips">
+            ${LOCAL_ANCESTOR_COLORS.map(c=>`
+              <button type="button" class="chip ${fs.ancestorColors.includes(c)?'active':''}"
+                data-ancestor="${c}">${c}</button>`).join('')}
+          </div>
+        </div>
       </div>
 
       <!-- ── TAB DNA ── -->
@@ -265,9 +352,12 @@ export async function renderDogForm(container, appState) {
       </div>
 
       <div style="display:flex;gap:10px;margin-top:24px;padding-bottom:100px">
-        <button type="button" class="btn btn-outline" onclick="window._nav('dogs')">Cancelar</button>
+        ${currentDepth > 0
+          ? `<button type="button" class="btn btn-outline" id="btn-wizard-back">← Voltar sem salvar</button>`
+          : `<button type="button" class="btn btn-outline" onclick="window._nav('dogs')">Cancelar</button>`
+        }
         <button type="submit" class="btn btn-primary" style="flex:1">
-          ${appState.editingDogId ? 'Salvar Alterações' : 'Cadastrar Cão'}
+          ${currentDepth > 0 ? `Salvar ${currentWizardCtx.relativeLabel}` : (appState.editingDogId ? 'Salvar Alterações' : 'Cadastrar Cão')}
         </button>
       </div>
     </form>
@@ -276,7 +366,7 @@ export async function renderDogForm(container, appState) {
   initFormHandlers(container, appState);
 }
 
-function ancestorField(label, id, field, lineageDogs = []) {
+function ancestorField(label, id, field, lineageDogs = [], showNewButton) {
   const escapeHtml = (v = '') => String(v).replace(/[&<>"']/g, (ch) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
   ));
@@ -303,12 +393,76 @@ function ancestorField(label, id, field, lineageDogs = []) {
           value="${(fs[field+'Name'])||''}" autocomplete="off" data-field="${field}" />
         <div class="autocomplete-dropdown hidden" id="${id}-dropdown"></div>
       </div>
+      <p class="text-sm text-muted mt-8" id="${id}-status">${fs[field+'Id']?'✓ Vinculado: '+fs[field+'Name']:''}</p>
+      ${showNewButton ? `<button type="button" class="btn btn-outline btn-sm btn-new-relative"
+        data-target="${field}Id" data-input="${id}-input" style="margin-top:8px">
+        ➕ Cadastrar novo ${label}
+      </button>` : ''}
     </div>`;
 }
 
 function initFormHandlers(container, appState) {
   const uid = appState.user.uid;
   const dogsById = Object.fromEntries((appState.dogs || []).map(d => [d.id, d]));
+
+  // ── Wizard: Voltar sem salvar ─────────────────────────────
+  document.getElementById('btn-wizard-back')?.addEventListener('click', async () => {
+    const ctx = wizardStack.pop();
+    if (!ctx) return;
+    fs = ctx.savedFs;
+    appState.editingDogId = ctx.savedEditingDogId;
+    pendingFormRestore = { ...ctx.savedFormSnapshot };
+    _wizardTransition = true;
+    const pageContent = document.getElementById('page-content');
+    await renderDogForm(pageContent, appState);
+  });
+
+  // ── Wizard: Cadastrar novo (pai/mãe/avô/avó) ─────────────
+  container.querySelectorAll('.btn-new-relative').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const targetField = btn.dataset.target;   // e.g. 'fatherId'
+      const inputId     = btn.dataset.input;    // e.g. 'father-input'
+      const prefilledName = document.getElementById(inputId)?.value.trim() || '';
+      const relativeLabel = RELATIVE_LABELS[targetField] || targetField;
+
+      // Capture all current form field values before re-rendering
+      const form = document.getElementById('dog-form');
+      const savedFormSnapshot = {
+        name:          form?.name?.value?.trim() || '',
+        sex:           form?.sex?.value || 'M',
+        belongsToMe:   form?.belongsToMe?.value || 'true',
+        baseColor:     form?.baseColor?.value || '',
+        marking:       form?.marking?.value || '',
+        nose:          form?.nose?.value || '',
+        dilution:      form?.dilution?.value || '',
+        merleType:     form?.merleType?.value || '',
+        intensity:     form?.intensity?.value || '',
+      };
+
+      wizardStack.push({
+        targetField,
+        relativeLabel,
+        savedFs:            { ...fs },
+        savedFormSnapshot,
+        savedEditingDogId:  appState.editingDogId,
+        prefilledName,
+      });
+
+      // Reset for the new nested dog
+      fs = resetFormState();
+      appState.editingDogId = null;
+
+      _wizardTransition = true;
+      const pageContent = document.getElementById('page-content');
+      await renderDogForm(pageContent, appState);
+
+      // Pre-fill the name input if user had typed something
+      if (prefilledName) {
+        const nameInput = pageContent?.querySelector('input[name="name"]');
+        if (nameInput) nameInput.value = prefilledName;
+      }
+    });
+  });
 
   // ── Photo upload
   const photoWrap  = document.getElementById('photo-upload-wrap');
@@ -394,6 +548,20 @@ function initFormHandlers(container, appState) {
     });
   });
 
+  // ── Ancestor colors
+  container.querySelectorAll('[data-ancestor]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const c = chip.dataset.ancestor;
+      if (fs.ancestorColors.includes(c)) {
+        fs.ancestorColors = fs.ancestorColors.filter(x=>x!==c);
+        chip.classList.remove('active');
+      } else {
+        fs.ancestorColors.push(c);
+        chip.classList.add('active');
+      }
+    });
+  });
+
   // ── Father autocomplete
   setupAC('father-input','father-dropdown', uid, async (dog) => {
     fs.fatherId = dog.id; fs.fatherName = dog.name; fs.fatherPhenotype = dog.phenotype;
@@ -405,6 +573,8 @@ function initFormHandlers(container, appState) {
       if (gf) {
         fs.patGrandfatherId=gf.id; fs.patGrandfatherName=gf.name;
         setVal('pat-gf-input', gf.name);
+        const stPGF = document.getElementById('pat-gf-status');
+        if (stPGF) stPGF.textContent = '✓ Vinculado: '+gf.name;
         markAutoFilled('pat-gf-input');
         filledCount++;
       }
@@ -414,6 +584,8 @@ function initFormHandlers(container, appState) {
       if (gm) {
         fs.patGrandmotherId=gm.id; fs.patGrandmotherName=gm.name;
         setVal('pat-gm-input', gm.name);
+        const stPGM = document.getElementById('pat-gm-status');
+        if (stPGM) stPGM.textContent = '✓ Vinculado: '+gm.name;
         markAutoFilled('pat-gm-input');
         filledCount++;
       }
@@ -434,6 +606,8 @@ function initFormHandlers(container, appState) {
       if (gf) {
         fs.matGrandfatherId=gf.id; fs.matGrandfatherName=gf.name;
         setVal('mat-gf-input', gf.name);
+        const stMGF = document.getElementById('mat-gf-status');
+        if (stMGF) stMGF.textContent = '✓ Vinculado: '+gf.name;
         markAutoFilled('mat-gf-input');
         filledCount++;
       }
@@ -443,6 +617,8 @@ function initFormHandlers(container, appState) {
       if (gm) {
         fs.matGrandmotherId=gm.id; fs.matGrandmotherName=gm.name;
         setVal('mat-gm-input', gm.name);
+        const stMGM = document.getElementById('mat-gm-status');
+        if (stMGM) stMGM.textContent = '✓ Vinculado: '+gm.name;
         markAutoFilled('mat-gm-input');
         filledCount++;
       }
@@ -495,7 +671,9 @@ function initFormHandlers(container, appState) {
 
     setupAC(id+'-input', id+'-dropdown', uid, (dog) => {
       fs[field+'Id'] = dog.id; fs[field+'Name'] = dog.name;
-      if (select) select.value = dog.id;
+if (select) select.value = dog.id;
+      const st = document.getElementById(id+'-status');
+      if (st) st.textContent = '✓ Vinculado: ' + dog.name;
       refreshDNAIfOpen();
     });
   });
@@ -548,7 +726,10 @@ function initFormHandlers(container, appState) {
         photoURL,
         phenotype,
         genotype,
+        producedColors: fs.provenColors,
         provenColors: fs.provenColors,
+        ancestorColors: fs.ancestorColors,
+        grandparentsColors: fs.ancestorColors,
         pedigree: {
           fatherId: fs.fatherId||null, fatherName: fs.fatherName||'',
           motherId: fs.motherId||null, motherName: fs.motherName||'',
@@ -568,13 +749,68 @@ function initFormHandlers(container, appState) {
           }
         }
       };
+
+      // ── Wizard: handle nested form save ──────────────────
+      if (wizardStack.length > 0) {
+        const savedId = await saveDog(uid, data, null);
+
+        const ctx = wizardStack.pop();
+        fs = ctx.savedFs;
+        appState.editingDogId = ctx.savedEditingDogId;
+
+        // Link the just-saved relative to the parent form state
+        fs[ctx.targetField] = savedId;
+        const nameField = ctx.targetField.replace('Id', 'Name');
+        fs[nameField] = data.name;
+
+        // If we just saved a father or mother, set phenotype and auto-fill grandparents
+        if (ctx.targetField === 'fatherId') {
+          fs.fatherPhenotype = data.phenotype;
+          if (data.pedigree?.fatherId) {
+            fs.patGrandfatherId   = data.pedigree.fatherId;
+            fs.patGrandfatherName = data.pedigree.fatherName || '';
+          }
+          if (data.pedigree?.motherId) {
+            fs.patGrandmotherId   = data.pedigree.motherId;
+            fs.patGrandmotherName = data.pedigree.motherName || '';
+          }
+        } else if (ctx.targetField === 'motherId') {
+          fs.motherPhenotype = data.phenotype;
+          if (data.pedigree?.fatherId) {
+            fs.matGrandfatherId   = data.pedigree.fatherId;
+            fs.matGrandfatherName = data.pedigree.fatherName || '';
+          }
+          if (data.pedigree?.motherId) {
+            fs.matGrandmotherId   = data.pedigree.motherId;
+            fs.matGrandmotherName = data.pedigree.motherName || '';
+          }
+        }
+
+        // Refresh dogs list then restore parent form
+        state.dogs = await getAllDogs(uid);
+        pendingFormRestore = { ...ctx.savedFormSnapshot };
+        _wizardTransition = true;
+        const pageContent = document.getElementById('page-content');
+        await renderDogForm(pageContent, appState);
+
+        // Show toast
+        showAutoFillToast(`${ctx.relativeLabel} "${data.name}" cadastrado e vinculado ✓`);
+        return;
+      }
+
+      // ── Top-level save ────────────────────────────────────
       await saveDog(uid, data, appState.editingDogId || null);
       state.dogs = await getAllDogs(uid);
+      wizardStack = []; // clear any stale stack
+      pendingFormRestore = null;
       window._nav('dogs');
     } catch(err) {
       alert('Erro ao salvar: ' + err.message);
       btn.disabled = false;
-      btn.textContent = appState.editingDogId ? 'Salvar Alterações' : 'Cadastrar Cão';
+      const errCtx = wizardStack.length > 0 ? wizardStack[wizardStack.length-1] : null;
+      btn.textContent = errCtx
+        ? `Salvar ${errCtx.relativeLabel}`
+        : (appState.editingDogId ? 'Salvar Alterações' : 'Cadastrar Cão');
     }
   });
 }

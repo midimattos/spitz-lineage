@@ -2,7 +2,7 @@
 // SIMULATOR PAGE — Ninhada, COI Profundo, PDF Premium, Matchmaker
 // ============================================================
 import { getDog } from '../firebase.js';
-import { simulateLitter, litterStats, inferGenotype as inferBaseGenotype } from '../utils/genetics.js';
+import { simulateLitter, litterStats } from '../utils/genetics.js';
 
 export function renderSimulator(container, appState) {
   const myDogs = appState.dogs.filter(d => d.belongsToMe);
@@ -139,24 +139,6 @@ function isConcreteAllele(allele) {
   return allele !== '?' && allele !== null && allele !== undefined && allele !== '';
 }
 
-function isConcretePair(pair) {
-  return Array.isArray(pair)
-    && pair.length === 2
-    && isConcreteAllele(pair[0])
-    && isConcreteAllele(pair[1]);
-}
-
-function ensureGenotypeFromDog(dog, producedColors) {
-  const baseInferred = inferBaseGenotype(dog?.phenotype || {}, {}, producedColors);
-  const current = dog?.genotype || {};
-  const merged = {};
-  for (const [locus, pair] of Object.entries(baseInferred)) {
-    const existing = current[locus];
-    merged[locus] = isConcretePair(existing) ? [...existing] : [...pair];
-  }
-  return merged;
-}
-
 function inferGenotype(dog) {
   const phenotype = dog?.phenotype || {};
   const baseColor = (phenotype.baseColor || dog?.baseColor || '').toLowerCase();
@@ -189,7 +171,7 @@ function inferGenotype(dog) {
   const allHistory = [...producedHistory, ...parentHistory, ...ancestorHistory];
   const hasAnyHistory = (pool, terms) => pool.some(c => terms.some(t => c.includes(t)));
 
-  const g = ensureGenotypeFromDog(dog, producedColors);
+  const g = {};
   const isVisualChocolate = baseColor.includes('chocolate') || baseColor.includes('beaver');
   const isVisualLilac = baseColor.includes('lilás') || baseColor.includes('lilas') || baseColor.includes('lilac');
   const isVisualOrange = baseColor.includes('laranja') || baseColor.includes('orange') || baseColor.includes('sable');
@@ -207,7 +189,7 @@ function inferGenotype(dog) {
   // b locus — strict deterministic inference
   if (isVisualChocolate || isVisualLilac) {
     g.Locus_B = ['b', 'b'];
-  } else if (isVisualBlack || isVisualBlue) {
+  } else {
     const hasChocolateProof =
       hasAnyHistory(producedHistory, ['chocolate', 'beaver']) ||
       hasAnyHistory(parentHistory, ['chocolate', 'beaver']);
@@ -231,7 +213,7 @@ function inferGenotype(dog) {
   // d locus — strict deterministic inference
   if (isVisualBlue || isVisualLilac || isVisualCreamWhite) {
     g.Locus_D = ['d', 'd'];
-  } else if (isVisualDense) {
+  } else {
     const hasDiluteProof =
       hasAnyHistory(producedHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac', 'creme', 'cream']) ||
       hasAnyHistory(parentHistory, ['azul', 'blue', 'cinza', 'lilás', 'lilas', 'lilac', 'creme', 'cream']);
